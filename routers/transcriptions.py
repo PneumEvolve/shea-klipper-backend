@@ -11,7 +11,7 @@ from routers.auth import get_current_user_dependency
 router = APIRouter()
 
 # Load Whisper model once to avoid reloading on every request
-model = whisper.load_model("base")
+model = whisper.load_model("tiny")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
