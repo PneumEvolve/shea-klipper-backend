@@ -34,7 +34,7 @@ async def transcribe_audio(
                 file=audio_file
             )
 
-        transcription_text = response.get("text", "")  # Make sure response is used correctly
+        transcription_text = response.text  # ✅ Fixed this line!
 
         # Save transcription to database
         transcription = Transcription(
