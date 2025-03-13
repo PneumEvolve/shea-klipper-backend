@@ -9,7 +9,7 @@ app = FastAPI()
 # Allow frontend to communicate with backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change this to specific frontend URL in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,7 +24,6 @@ app.include_router(summarization.router, prefix="/summarization", tags=["summari
 def root():
     return {"message": "Shea Klipper Backend Running Successfully"}
 
-# Ensure Render assigns the correct port
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))  # Default to 8000 locally
     uvicorn.run(app, host="0.0.0.0", port=port)
