@@ -57,3 +57,51 @@ async def transcribe_audio(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing audio: {str(e)}")
+    ### 🟢 Fetch all transcriptions for the logged-in user
+    
+@router.get("/transcriptions")
+async def get_all_transcriptions(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    transcriptions = db.query(Transcription).filter(
+        Transcription.user_id == current_user["id"]
+    ).all()
+
+    if not transcriptions:
+        return {"message": "No transcriptions found."}
+
+    return [
+        {
+            "id": t.id,
+            "filename": t.filename,
+            "transcription_text": t.transcription_text,
+        }
+        for t in transcriptions
+    ]
+
+### 🔴 Delete a transcription
+@router.delete("/transcription/{transcription_id}")
+async def delete_transcription(
+    transcription_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    transcription = db.query(Transcription).filter(
+        Transcription.id == transcription_id,
+        Transcription.user_id == current_user["id"]
+    ).first()
+
+    if not transcription:
+        raise HTTPException(status_code=404, detail="Transcription not found.")
+
+    # Attempt to delete the audio file
+    file_path = os.path.join(UPLOAD_DIR, transcription.filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    # Remove from DB
+    db.delete(transcription)
+    db.commit()
+
+    return {"message": "Transcription deleted successfully."}
