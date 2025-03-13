@@ -6,6 +6,10 @@ from routers import auth, transcriptions, summarization
 
 app = FastAPI()
 
+origins = [
+    "https://sheas-app.netlify.app",
+]
+
 # Allow frontend to communicate with backend
 app.add_middleware(
     CORSMiddleware,
