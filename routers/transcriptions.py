@@ -29,9 +29,12 @@ async def transcribe_audio(
 
         # Send to OpenAI API
         with open(file_path, "rb") as audio_file:
-            response = openai.Audio.transcribe("whisper-1", audio_file)
+            response = openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
 
-        transcription_text = response.get("text", "")
+        transcription_text = response.get("text", "")  # Make sure response is used correctly
 
         # Save transcription to database
         transcription = Transcription(
