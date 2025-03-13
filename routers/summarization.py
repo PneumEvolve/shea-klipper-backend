@@ -37,37 +37,24 @@ async def summarize_transcription(
         )
 
         # Extract response safely
-        summary = getattr(response, "choices", [{}])[0].message.content.strip()
+        summary = response.choices[0].message.content.strip()
 
         # Split into summary & title
-        summary_parts = summary.split("\n", 1)  # Ensure it only splits once
-        generated_title = summary_parts[0].strip() if len(summary_parts) > 1 else "Untitled"
-        summary_text = summary_parts[1].strip() if len(summary_parts) > 1 else summary_parts[0]
+        summary_parts = summary.split("\n")
+        generated_title = summary_parts[0] if len(summary_parts) > 1 else "Untitled"
+        summary_text = "\n".join(summary_parts[1:])
 
-        # Store summary in DB
-        transcription.transcription_text = summary_text  # Overwrite with summary
-        transcription.filename = generated_title  # Change filename to title
-
-        # 🔹 **Now categorize the transcription**
-        category_response = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "Categorize this transcription based on its content. Keep the category concise."},
-                {"role": "user", "content": f"Categorize this text:\n\n{transcription.transcription_text}"}
-            ]
-        )
-
-        transcription.category = getattr(category_response, "choices", [{}])[0].message.content.strip()
-
-        # ✅ Save everything to the database
+        # ✅ Store summary separately, do NOT overwrite full transcription
+        transcription.summary_text = summary_text
+        transcription.filename = generated_title  # Optionally update filename
         db.commit()
         db.refresh(transcription)
 
         return {
             "id": transcription.id,
             "filename": transcription.filename,
-            "summary": transcription.transcription_text,
-            "category": transcription.category
+            "summary": transcription.summary_text,
+            "full_transcription": transcription.transcription_text  # ✅ Ensure full transcription is returned
         }
 
     except Exception as e:
