@@ -85,7 +85,7 @@ async def get_all_transcriptions(
 async def delete_transcription(
     transcription_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user_dependency)
+    current_user: dict = Depends(get_current_user_dependency),
 ):
     transcription = db.query(Transcription).filter(
         Transcription.id == transcription_id,
@@ -95,13 +95,13 @@ async def delete_transcription(
     if not transcription:
         raise HTTPException(status_code=404, detail="Transcription not found.")
 
-    # Attempt to delete the audio file
+    # ✅ Attempt to delete the audio file if it exists
     file_path = os.path.join(UPLOAD_DIR, transcription.filename)
     if os.path.exists(file_path):
         os.remove(file_path)
 
-    # Remove from DB
+    # ✅ Remove from DB
     db.delete(transcription)
     db.commit()
 
-    return {"message": "Transcription deleted successfully."}
+    return {"message": "✅ Transcription deleted successfully."}
