@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Security
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import jwt
@@ -63,16 +63,20 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return {"access_token": access_token, "token_type": "bearer"}
 
 # ✅ Dependency to Get Current User
-def get_current_user_dependency(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Session = Depends(get_db)):
+    print(f"🔹 Received token: {token}")  # ✅ Log incoming token for debugging
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user = db.query(User).filter(User.id == payload.get("id")).first()
         if not user:
+            print("🔴 Invalid authentication: User not found")
             raise HTTPException(status_code=401, detail="Invalid authentication")
         return {"id": user.id, "email": user.email}
     except jwt.ExpiredSignatureError:
+        print("🔴 Token expired")
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
+        print("🔴 Invalid token")
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # ✅ GET CURRENT USER Endpoint
