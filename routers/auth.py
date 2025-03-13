@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-import PyJWT as jwt
+import jwt
 from datetime import timedelta, datetime
 from passlib.context import CryptContext
 from database import get_db
