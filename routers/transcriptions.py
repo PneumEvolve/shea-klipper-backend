@@ -60,22 +60,16 @@ async def transcribe_audio(
     ### 🟢 Fetch all transcriptions for the logged-in user
     
 @router.get("/transcriptions")
-async def get_all_transcriptions(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user_dependency)
-):
-    transcriptions = db.query(Transcription).filter(
-        Transcription.user_id == current_user["id"]
-    ).all()
-
-    if not transcriptions:
-        return {"message": "No transcriptions found."}
+def get_transcriptions(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    """Fetch all transcriptions for the current user, including summaries"""
+    transcriptions = db.query(Transcription).filter(Transcription.user_id == current_user["id"]).all()
 
     return [
         {
             "id": t.id,
             "filename": t.filename,
             "transcription_text": t.transcription_text,
+            "summary_text": t.summary_text  # ✅ Ensure this is included
         }
         for t in transcriptions
     ]
