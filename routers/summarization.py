@@ -11,6 +11,7 @@ load_dotenv()
 
 router = APIRouter()
 
+# ✅ Set up logging
 logging.basicConfig(level=logging.INFO)
 
 @router.post("/summarize/{transcription_id}")
@@ -20,16 +21,19 @@ async def summarize_transcription(
     current_user: dict = Depends(get_current_user_dependency)
 ):
     try:
-        # Fetch transcription from DB
+        # 🔹 Step 1: Fetch transcription from DB
         transcription = db.query(Transcription).filter(
             Transcription.id == transcription_id,
             Transcription.user_id == current_user["id"]
         ).first()
 
         if not transcription:
+            logging.warning(f"⚠️ Transcription ID {transcription_id} not found for user {current_user['id']}")
             raise HTTPException(status_code=404, detail="Transcription not found.")
 
-        # Send text to OpenAI for summarization & title generation
+        logging.info(f"✅ Found transcription ID {transcription_id} for summarization.")
+
+        # 🔹 Step 2: Send text to OpenAI for summarization & title generation
         response = openai.chat.completions.create(
             model="gpt-4",
             messages=[
@@ -42,27 +46,29 @@ async def summarize_transcription(
         # ✅ Log OpenAI Response
         logging.info(f"🟡 OpenAI Response: {response}")
 
-        # Extract response safely
-        summary = response.choices[0].message.content.strip()
+        # 🔹 Step 3: Extract summary text safely
+        summary_text = response.choices[0].message.content.strip()
 
         # ✅ Log extracted summary
-        logging.info(f"✅ Extracted Summary: {summary}")
+        logging.info(f"✅ Extracted Summary: {summary_text}")
 
-        # Split into summary & title
-        summary_parts = summary.split("\n")
-        generated_title = summary_parts[0] if len(summary_parts) > 1 else "Untitled"
-        summary_text = "\n".join(summary_parts[1:])
+        if not summary_text:
+            logging.warning(f"⚠️ Empty summary returned for transcription ID {transcription_id}")
+            raise HTTPException(status_code=500, detail="Summarization failed: OpenAI returned empty text.")
 
-        # Store summary in DB
+        # 🔹 Step 4: Store summary in DB
         transcription.summary_text = summary_text
-        transcription.filename = generated_title  # Optionally update filename
-        db.commit()
-        db.refresh(transcription)
+        db.commit()  # ✅ Ensure changes are saved
+
+        # ✅ Log after commit
+        logging.info(f"📌 Summary successfully saved for transcription ID {transcription_id}")
+
+        db.refresh(transcription)  # ✅ Refresh the object to confirm DB update
 
         return {
             "id": transcription.id,
             "filename": transcription.filename,
-            "summary": transcription.summary_text  # ✅ Make sure the correct field is returned
+            "summary": transcription.summary_text  # ✅ Ensure correct field is returned
         }
 
     except Exception as e:
