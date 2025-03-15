@@ -15,11 +15,10 @@ class Transcription(Base):
     __tablename__ = "transcriptions"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))  # ✅ Ensure ForeignKey matches
-    filename = Column(String, index=True)
-    transcription_text = Column(Text)
-    summary_text = Column(Text, nullable=True)
-    category = Column(String, nullable=True)
+    filename = Column(String, nullable=False)
+    transcription_text = Column(String, nullable=True)
+    summary_text = Column(String, nullable=True)
+    uploaded_at = Column(DateTime, default=datetime.utcnow)  # Store the upload time
     
      # ✅ Ensure this relationship exists
     user = relationship("User", back_populates="transcriptions")
