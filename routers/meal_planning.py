@@ -121,16 +121,19 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
 
 ### 📁 Get All Categories for a User
 @router.get("/categories")
-def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """ Fetch all categories linked to the user (with IDs) """
-    user_categories = (
-        db.query(Category.id, Category.name)
-        .join(user_categories, user_categories.c.category_id == Category.id)
-        .filter(user_categories.c.user_id == current_user["id"])
+def get_user_categories(db: Session, user_id: int):
+    """
+    Fetch the user's meal planning categories.
+    """
+    # Ensure user_categories is properly imported and used correctly
+    categories = (
+        db.query(Category)
+        .join(user_categories, user_categories.c.category_id == Category.id)  # Ensure user_categories is correctly imported
+        .filter(user_categories.c.user_id == user_id)
         .all()
     )
 
-    return {"categories": [{"id": cat.id, "name": cat.name} for cat in user_categories]}
+    return {"categories": [{"id": category.id, "name": category.name} for category in categories]}
 
 @router.delete("/recipes/{recipe_id}")
 def delete_recipe(recipe_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
