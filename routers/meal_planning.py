@@ -97,36 +97,42 @@ def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depen
         ]
     }
 
-### 📁 Add a Category (Now Links to User)
 @router.post("/categories")
 def add_category(category_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """ Adds a new category and links it to the user """
+    """ Add new categories to the database """
+    try:
+        # Ensure "categories" key is present in the request
+        if "categories" not in category_data or not isinstance(category_data["categories"], list):
+            raise HTTPException(status_code=400, detail="Invalid request format. Expected 'categories': [list]")
+
+        added_categories = []
+        for category_name in category_data["categories"]:
+            # Check if category already exists
+            existing_category = db.query(Category).filter(Category.name == category_name).first()
+            if not existing_category:
+                # Create the category if it doesn't exist
+                new_category = Category(name=category_name)
+                db.add(new_category)
+                db.commit()
+                db.refresh(new_category)
+                added_categories.append(new_category.name)
+            else:
+                added_categories.append(existing_category.name)
+
+            # Ensure the user is linked to the category
+            user_category = db.query(UserCategory).filter(
+                UserCategory.user_id == current_user["id"],
+                UserCategory.category_id == existing_category.id if existing_category else new_category.id
+            ).first()
+
+            if not user_category:
+                db.add(UserCategory(user_id=current_user["id"], category_id=existing_category.id if existing_category else new_category.id))
+                db.commit()
+
+        return {"message": "Categories updated successfully.", "added_categories": added_categories}
     
-    # Check if category already exists
-    existing_category = db.query(Category).filter(Category.name == category_data["name"]).first()
-    
-    if not existing_category:
-        # Create a new category if it doesn't exist
-        new_category = Category(name=category_data["name"])
-        db.add(new_category)
-        db.commit()
-        db.refresh(new_category)
-    else:
-        new_category = existing_category
-
-    # Check if the user is already linked to the category
-    user_category = db.query(UserCategory).filter(
-        UserCategory.user_id == current_user["id"],
-        UserCategory.category_id == new_category.id
-    ).first()
-
-    if not user_category:
-        # Link user to category
-        new_user_category = UserCategory(user_id=current_user["id"], category_id=new_category.id)
-        db.add(new_user_category)
-        db.commit()
-
-    return {"message": "Category added successfully", "category_id": new_category.id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 ### 📁 Get All Categories for a User
 @router.get("/categories")
