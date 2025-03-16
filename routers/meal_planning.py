@@ -97,33 +97,46 @@ def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depen
         ]
     }
 
-### 📁 Manage Categories (Updated for Many-to-Many Relationship)
+### 📁 Add a Category (Now Links to User)
 @router.post("/categories")
 def add_category(category_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """
-    Adds new categories and links them to the user.
-    """
-    for category_name in category_data["categories"]:
-        category = db.query(Category).filter(Category.name == category_name).first()
+    """ Adds a new category and links it to the user """
+    
+    # Check if category already exists
+    existing_category = db.query(Category).filter(Category.name == category_data["name"]).first()
+    
+    if not existing_category:
+        # Create a new category if it doesn't exist
+        new_category = Category(name=category_data["name"])
+        db.add(new_category)
+        db.commit()
+        db.refresh(new_category)
+    else:
+        new_category = existing_category
 
-        # If category does not exist, create it
-        if not category:
-            category = Category(name=category_name)
-            db.add(category)
-            db.commit()
-            db.refresh(category)
+    # Check if the user is already linked to the category
+    user_category = db.query(UserCategory).filter(
+        UserCategory.user_id == current_user["id"],
+        UserCategory.category_id == new_category.id
+    ).first()
 
-        # Link user to category if not already linked
-        if category not in current_user.categories:
-            current_user.categories.append(category)
+    if not user_category:
+        # Link user to category
+        new_user_category = UserCategory(user_id=current_user["id"], category_id=new_category.id)
+        db.add(new_user_category)
+        db.commit()
 
-    db.commit()
-    return {"message": "Categories updated successfully."}
+    return {"message": "Category added successfully", "category_id": new_category.id}
 
+### 📁 Get All Categories for a User
 @router.get("/categories")
-def get_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """
-    Retrieves all categories associated with the user.
-    """
-    categories = current_user.categories
+def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    """ Fetch all categories linked to the user """
+    categories = (
+        db.query(Category)
+        .join(UserCategory, Category.id == UserCategory.category_id)
+        .filter(UserCategory.user_id == current_user["id"])
+        .all()
+    )
+
     return {"categories": [category.name for category in categories]}

@@ -21,8 +21,8 @@ class User(Base):
     transcriptions = relationship("Transcription", back_populates="user", cascade="all, delete-orphan")
     recipes = relationship("Recipe", back_populates="user", cascade="all, delete-orphan")
     food_inventory = relationship("FoodInventory", back_populates="user", cascade="all, delete-orphan")
-    
-    # ✅ Many-to-Many relationship with categories
+
+    # ✅ Many-to-Many relationship with categories (linked via user_categories table)
     categories = relationship("Category", secondary=user_categories, back_populates="users")
 
 class Transcription(Base):
@@ -64,5 +64,5 @@ class Category(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False)  # Category name should be unique
     
-    # ✅ Many-to-Many relationship with users
+    # ✅ Many-to-Many relationship with users (linked via user_categories table)
     users = relationship("User", secondary=user_categories, back_populates="categories")
