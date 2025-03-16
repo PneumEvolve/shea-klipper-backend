@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from models import Recipe, FoodInventory, Category, user_categories
+from models import Recipe, FoodInventory, Category, UserCategory
 from database import get_db
 from routers.auth import get_current_user_dependency
 
@@ -138,11 +138,11 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
 @router.get("/categories")
 def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     """ Fetch all categories linked to the user """
-    categories = (
+    user_categories = (
         db.query(Category)
-        .join(UserCategory, Category.id == UserCategory.category_id)
+        .join(UserCategory, UserCategory.category_id == Category.id)
         .filter(UserCategory.user_id == current_user["id"])
         .all()
     )
 
-    return {"categories": [category.name for category in categories]}
+    return {"categories": [cat.name for cat in user_categories]}
