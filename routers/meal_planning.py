@@ -120,20 +120,21 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
         raise HTTPException(status_code=500, detail=str(e))
 
 ### 📁 Get All Categories for a User
-@router.get("/categories")
-def get_user_categories(db: Session, user_id: int):
-    """
-    Fetch the user's meal planning categories.
-    """
-    # Ensure user_categories is properly imported and used correctly
-    categories = (
-        db.query(Category)
-        .join(user_categories, user_categories.c.category_id == Category.id)  # Ensure user_categories is correctly imported
-        .filter(user_categories.c.user_id == user_id)
-        .all()
-    )
+@router.get("/categories", response_model=dict)  # Ensure it returns a JSON response
+def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    """ Fetch all categories linked to the user. """
+    try:
+        categories = (
+            db.query(Category)
+            .join(user_categories, user_categories.c.category_id == Category.id)
+            .filter(user_categories.c.user_id == current_user["id"])
+            .all()
+        )
 
-    return {"categories": [{"id": category.id, "name": category.name} for category in categories]}
+        return {"categories": [{"id": category.id, "name": category.name} for category in categories]}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/recipes/{recipe_id}")
 def delete_recipe(recipe_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
