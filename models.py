@@ -24,3 +24,24 @@ class Transcription(Base):
     # ✅ Ensure this relationship exists
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="transcriptions")
+
+class Recipe(Base):
+    __tablename__ = "recipes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))  # Link recipes to specific users
+    name = Column(String, nullable=False)
+    ingredients = Column(Text, nullable=False)  # Store as comma-separated values
+    instructions = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="recipes")  # Connect recipes to users
+
+class FoodInventory(Base):
+    __tablename__ = "food_inventory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))  # Link inventory to specific users
+    ingredients = Column(Text, nullable=True)  # Store as comma-separated values
+
+    user = relationship("User", back_populates="food_inventory")
