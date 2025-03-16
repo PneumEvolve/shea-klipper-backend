@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from models import Recipe, FoodInventory
 from database import get_db
 from routers.auth import get_current_user_dependency
+from schemas import FoodInventoryUpdateSchema
 
 router = APIRouter()
 
@@ -60,26 +61,27 @@ def delete_recipe(recipe_id: int, db: Session = Depends(get_db), current_user: d
     db.commit()
     return {"message": "Recipe deleted successfully."}
 
-### 🏡 Store User’s Food Inventory
+### 🏡 Get User’s Food Inventory
+@router.get("/food-inventory")
+def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    """Fetch the food inventory for the logged-in user."""
+    inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).first()
+    if not inventory:
+        return {"items": []}
+    return {"items": inventory.ingredients.split(",")}  # Convert stored string to list
+
+### ✅ Store or Update User’s Food Inventory
 @router.post("/food-inventory")
-def update_food_inventory(ingredients: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+def update_food_inventory(inventory_data: FoodInventoryUpdateSchema, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    """Update or create the food inventory for the logged-in user."""
     inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).first()
     
     if inventory:
-        inventory.ingredients = ",".join(ingredients["items"])
+        inventory.ingredients = ",".join(inventory_data.items)  # Store as a string
     else:
-        inventory = FoodInventory(user_id=current_user["id"], ingredients=",".join(ingredients["items"]))
+        inventory = FoodInventory(user_id=current_user["id"], ingredients=",".join(inventory_data.items))
         db.add(inventory)
     
     db.commit()
     db.refresh(inventory)
-    return inventory
-
-### 🔍 Get User’s Food Inventory
-@router.get("/food-inventory")
-def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).first()
-    if not inventory:
-        return {"items": []}
-    
-    return {"items": inventory.ingredients.split(",")}
+    return {"message": "Food inventory updated", "items": inventory_data.items}
