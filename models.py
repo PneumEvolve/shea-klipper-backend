@@ -47,3 +47,12 @@ class FoodInventory(Base):
     ingredients = Column(Text, nullable=True)  # Store as comma-separated values
 
     user = relationship("User", back_populates="food_inventory")
+
+class Category(Base):
+    __tablename__ = "categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    categories = Column(Text, nullable=False)  # Store categories as comma-separated values
+
+    user = relationship("User", back_populates="categories")
