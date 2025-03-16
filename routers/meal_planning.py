@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from models import Recipe, FoodInventory, Category, UserCategory, user_categories
+from models import Recipe, FoodInventory, Category, user_categories
 from database import get_db
 from routers.auth import get_current_user_dependency
 
@@ -34,37 +34,27 @@ def get_recipes(db: Session = Depends(get_db), current_user: dict = Depends(get_
         for r in recipes
     ]
 
-### 🛒 Store User’s Food Inventory (Fixed Category Handling)
+### 🛒 Store User’s Food Inventory
 @router.post("/food-inventory")
 def update_food_inventory(food_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """
-    Updates food inventory with:
-    - `name`: Item name
-    - `quantity`: Current quantity in stock
-    - `desired_quantity`: The amount that should always be available
-    - `categories`: List of category IDs (many-to-many relationship)
-    """
+    """ Updates food inventory with item name, quantity, desired quantity, and categories """
     try:
-        # Delete previous inventory records
-        db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).delete()
+        inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).all()
 
-        # Add new inventory items
+        # Remove existing inventory
+        for item in inventory:
+            db.delete(item)
+
+        # Add new inventory
         for item in food_data["items"]:
             new_inventory = FoodInventory(
                 user_id=current_user["id"],
                 name=item["name"],
                 quantity=item["quantity"],
-                desired_quantity=item["desiredQuantity"]
+                desired_quantity=item["desiredQuantity"],
+                categories=",".join(map(str, item["categories"]))  # Store category IDs as a string
             )
             db.add(new_inventory)
-            db.commit()
-            db.refresh(new_inventory)
-
-            # Handle category relationships
-            for category_id in item["categories"]:
-                category = db.query(Category).filter(Category.id == category_id).first()
-                if category:
-                    new_inventory.categories.append(category)
 
         db.commit()
         return {"message": "Food inventory updated successfully."}
@@ -75,13 +65,6 @@ def update_food_inventory(food_data: dict, db: Session = Depends(get_db), curren
 ### 🔍 Get User’s Food Inventory
 @router.get("/food-inventory")
 def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """
-    Retrieves user's food inventory, formatted as:
-    - `name`: Item name
-    - `quantity`: Current quantity
-    - `desired_quantity`: The amount that should always be available
-    - `categories`: List of category IDs
-    """
     inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).all()
 
     if not inventory:
@@ -94,16 +77,16 @@ def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depen
                 "name": item.name,
                 "quantity": item.quantity,
                 "desiredQuantity": item.desired_quantity,
-                "categories": [category.id for category in item.categories]  # Proper relationship handling
+                "categories": list(map(int, item.categories.split(","))) if item.categories else []
             }
             for item in inventory
         ]
     }
 
-### 📁 Add a New Category
+### 📁 Manage Categories
 @router.post("/categories")
 def add_category(category_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """ Add new categories to the database """
+    """ Add new categories to the database and associate them with the user """
     try:
         if "categories" not in category_data or not isinstance(category_data["categories"], list):
             raise HTTPException(status_code=400, detail="Invalid request format. Expected 'categories': [list]")
@@ -120,15 +103,9 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
             else:
                 added_categories.append(existing_category.name)
 
-            # Link user to category in `user_categories`
-            user_category = db.query(UserCategory).filter(
-                UserCategory.user_id == current_user["id"],
-                UserCategory.category_id == existing_category.id if existing_category else new_category.id
-            ).first()
-
-            if not user_category:
-                db.add(UserCategory(user_id=current_user["id"], category_id=existing_category.id if existing_category else new_category.id))
-                db.commit()
+            # Associate user with category
+            db.execute(user_categories.insert().values(user_id=current_user["id"], category_id=new_category.id if not existing_category else existing_category.id))
+            db.commit()
 
         return {"message": "Categories updated successfully.", "added_categories": added_categories}
 
@@ -139,11 +116,8 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
 @router.get("/categories")
 def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     """ Fetch all categories linked to the user """
-    user_categories = (
-        db.query(Category)
-        .join(UserCategory, UserCategory.category_id == Category.id)
-        .filter(UserCategory.user_id == current_user["id"])
-        .all()
-    )
+    user_categories_query = db.execute(
+        f"SELECT c.name FROM categories c JOIN user_categories uc ON c.id = uc.category_id WHERE uc.user_id = {current_user['id']}"
+    ).fetchall()
 
-    return {"categories": [cat.name for cat in user_categories]}
+    return {"categories": [row[0] for row in user_categories_query]}

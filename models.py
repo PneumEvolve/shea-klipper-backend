@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base  # Import Base model from database.py
 
-# ✅ Association Table for Many-to-Many Relationship Between Users and Categories
+# ✅ Many-to-Many Relationship Between Users and Categories
 user_categories = Table(
     "user_categories",
     Base.metadata,
@@ -22,7 +22,7 @@ class User(Base):
     recipes = relationship("Recipe", back_populates="user", cascade="all, delete-orphan")
     food_inventory = relationship("FoodInventory", back_populates="user", cascade="all, delete-orphan")
 
-    # ✅ Many-to-Many relationship with categories
+    # ✅ Many-to-Many relationship with categories (via user_categories table)
     categories = relationship("Category", secondary=user_categories, back_populates="users")
 
 class Transcription(Base):
@@ -41,20 +41,23 @@ class Recipe(Base):
     __tablename__ = "recipes"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Link recipes to specific users
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     name = Column(String, nullable=False)
-    ingredients = Column(Text, nullable=False)  # Store as comma-separated values
+    ingredients = Column(Text, nullable=False)
     instructions = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    user = relationship("User", back_populates="recipes")  # Connect recipes to users
+    user = relationship("User", back_populates="recipes")
 
 class FoodInventory(Base):
     __tablename__ = "food_inventory"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Link inventory to specific users
-    items = Column(Text, nullable=True)  # Store food inventory items as a JSON-like string
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    quantity = Column(Integer, nullable=False, default=0)
+    desired_quantity = Column(Integer, nullable=False, default=0)
+    categories = Column(Text, nullable=True)  # Storing category IDs as comma-separated values
 
     user = relationship("User", back_populates="food_inventory")
 
@@ -62,7 +65,7 @@ class Category(Base):
     __tablename__ = "categories"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, nullable=False)  # Category name should be unique
+    name = Column(String, unique=True, nullable=False)
 
-    # ✅ Many-to-Many relationship with users
+    # ✅ Many-to-Many relationship with users (via user_categories table)
     users = relationship("User", secondary=user_categories, back_populates="categories")
