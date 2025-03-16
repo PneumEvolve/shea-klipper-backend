@@ -130,3 +130,39 @@ def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depe
 
     categories = [row[0] for row in user_categories_query.fetchall()]
     return {"categories": categories}
+
+@router.delete("/recipes/{recipe_id}")
+def delete_recipe(recipe_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    recipe = db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == current_user["id"]).first()
+    
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found.")
+    
+    db.delete(recipe)
+    db.commit()
+    return {"message": "Recipe deleted successfully"}
+
+@router.delete("/food-inventory/{item_id}")
+def delete_food_inventory(item_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    item = db.query(FoodInventory).filter(FoodInventory.id == item_id, FoodInventory.user_id == current_user["id"]).first()
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Food inventory item not found.")
+    
+    db.delete(item)
+    db.commit()
+    return {"message": "Food inventory item deleted successfully"}
+
+@router.delete("/categories/{category_id}")
+def delete_category(category_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    category = db.query(Category).filter(Category.id == category_id).first()
+    
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found.")
+    
+    # Remove associations from user_categories table
+    db.execute(user_categories.delete().where(user_categories.c.category_id == category_id))
+    
+    db.delete(category)
+    db.commit()
+    return {"message": "Category deleted successfully"}
