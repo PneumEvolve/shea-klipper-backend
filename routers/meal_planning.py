@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from models import Recipe, FoodInventory, Category, user_categories
 from database import get_db
 from routers.auth import get_current_user_dependency
+from sqlalchemy.sql import text
 
 router = APIRouter()
 
@@ -77,7 +78,7 @@ def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depen
                 "name": item.name,
                 "quantity": item.quantity,
                 "desiredQuantity": item.desired_quantity,
-                "categories": list(map(int, item.categories.split(","))) if item.categories else []
+                "categories": item.categories.split(",") if item.categories else []  # ✅ Fix: Don't convert to int
             }
             for item in inventory
         ]
@@ -117,7 +118,9 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
 def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     """ Fetch all categories linked to the user """
     user_categories_query = db.execute(
-        f"SELECT c.name FROM categories c JOIN user_categories uc ON c.id = uc.category_id WHERE uc.user_id = {current_user['id']}"
-    ).fetchall()
+        text("SELECT c.name FROM categories c JOIN user_categories uc ON c.id = uc.category_id WHERE uc.user_id = :user_id"),
+        {"user_id": current_user["id"]}
+    )
 
-    return {"categories": [row[0] for row in user_categories_query]}
+    categories = [row[0] for row in user_categories_query.fetchall()]
+    return {"categories": categories}
