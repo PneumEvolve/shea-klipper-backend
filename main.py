@@ -1,25 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth, transcriptions, summarization
-import os
+from routers import auth, transcriptions, summarization, meal_planning  # ✅ Make sure meal_planning is included
 
 app = FastAPI()
 
-# ✅ Explicitly Allow Netlify Frontend
-origins = [
-    "https://sheas-app.netlify.app",  # ✅ Allow only this frontend
-    "http://localhost:5173",  # ✅ Allow local development
-]
-
+# CORS Setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # ✅ Explicitly set allowed origins
-    allow_credentials=True,  # ✅ Allow cookies and authentication tokens
-    allow_methods=["*"],  # ✅ Allow all HTTP methods (GET, POST, DELETE, etc.)
-    allow_headers=["*"],  # ✅ Allow all headers
+    allow_origins=["*"],  # Adjust this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# ✅ Include Routers
-app.include_router(auth.router, prefix="/auth")
-app.include_router(transcriptions.router, prefix="/transcriptions")
-app.include_router(summarization.router, prefix="/summarization")
+# ✅ Include all routers
+app.include_router(auth.router, prefix="/auth", tags=["Auth"])
+app.include_router(transcriptions.router, prefix="/transcriptions", tags=["Transcriptions"])
+app.include_router(summarization.router, prefix="/summarization", tags=["Summarization"])
+app.include_router(meal_planning.router, prefix="/meal-planning", tags=["Meal Planning"])  # ✅ Added here
