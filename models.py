@@ -11,6 +11,7 @@ class User(Base):
     hashed_password = Column(String)
 
     transcriptions = relationship("Transcription", back_populates="user", cascade="all, delete-orphan")
+    recipes = relationship("Recipe", back_populates="user", cascade="all, delete-orphan")
 
 class Transcription(Base):
     __tablename__ = "transcriptions"
