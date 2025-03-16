@@ -22,7 +22,7 @@ class User(Base):
     recipes = relationship("Recipe", back_populates="user", cascade="all, delete-orphan")
     food_inventory = relationship("FoodInventory", back_populates="user", cascade="all, delete-orphan")
 
-    # ✅ Many-to-Many relationship with categories (linked via user_categories table)
+    # ✅ Many-to-Many relationship with categories
     categories = relationship("Category", secondary=user_categories, back_populates="users")
 
 class Transcription(Base):
@@ -54,7 +54,7 @@ class FoodInventory(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # Link inventory to specific users
-    ingredients = Column(Text, nullable=True)  # Store as comma-separated values
+    items = Column(Text, nullable=True)  # Store food inventory items as a JSON-like string
 
     user = relationship("User", back_populates="food_inventory")
 
@@ -63,6 +63,6 @@ class Category(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False)  # Category name should be unique
-    
-    # ✅ Many-to-Many relationship with users (linked via user_categories table)
+
+    # ✅ Many-to-Many relationship with users
     users = relationship("User", secondary=user_categories, back_populates="categories")
