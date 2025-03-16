@@ -1,14 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from models import Recipe, FoodInventory
+from models import Recipe, FoodInventory, Category
 from database import get_db
 from routers.auth import get_current_user_dependency
-from schemas import FoodInventoryUpdateSchema
 
 router = APIRouter()
 
 ### 🥘 Add a New Recipe
-@router.post("/recipes")
+@router.post("/meal-planning/recipes")
 def add_recipe(recipe_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     new_recipe = Recipe(
         user_id=current_user["id"],
@@ -22,66 +21,84 @@ def add_recipe(recipe_data: dict, db: Session = Depends(get_db), current_user: d
     return new_recipe
 
 ### 📖 Get All Recipes for a User
-@router.get("/recipes")
+@router.get("/meal-planning/recipes")
 def get_recipes(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     recipes = db.query(Recipe).filter(Recipe.user_id == current_user["id"]).all()
     return [
         {
             "id": r.id,
             "name": r.name,
-            "ingredients": r.ingredients.split(","),  # Convert back to list
+            "ingredients": r.ingredients.split(","),
             "instructions": r.instructions
         }
         for r in recipes
     ]
 
-### 📝 Edit a Recipe
-@router.put("/recipes/{recipe_id}")
-def edit_recipe(recipe_id: int, recipe_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    recipe = db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == current_user["id"]).first()
-    if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found.")
-    
-    recipe.name = recipe_data["name"]
-    recipe.ingredients = ",".join(recipe_data["ingredients"])
-    recipe.instructions = recipe_data["instructions"]
-    
-    db.commit()
-    db.refresh(recipe)
-    return recipe
+### 🛒 Store User’s Food Inventory
+@router.post("/meal-planning/food-inventory")
+def update_food_inventory(food_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    """ Updates food inventory with item name, quantity, desired quantity, and categories """
+    try:
+        inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).first()
+        
+        if inventory:
+            inventory.items = ",".join([f"{item['name']}|{item['quantity']}|{item['desiredQuantity']}|{'|'.join(item['categories'])}" for item in food_data["items"]])
+        else:
+            inventory = FoodInventory(
+                user_id=current_user["id"], 
+                items=",".join([f"{item['name']}|{item['quantity']}|{item['desiredQuantity']}|{'|'.join(item['categories'])}" for item in food_data["items"]])
+            )
+            db.add(inventory)
 
-### ❌ Delete a Recipe
-@router.delete("/recipes/{recipe_id}")
-def delete_recipe(recipe_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    recipe = db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == current_user["id"]).first()
-    if not recipe:
-        raise HTTPException(status_code=404, detail="Recipe not found.")
+        db.commit()
+        db.refresh(inventory)
+        return {"message": "Food inventory updated successfully."}
     
-    db.delete(recipe)
-    db.commit()
-    return {"message": "Recipe deleted successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error updating food inventory: {str(e)}")
 
-### 🏡 Get User’s Food Inventory
-@router.get("/food-inventory")
+### 🔍 Get User’s Food Inventory
+@router.get("/meal-planning/food-inventory")
 def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """Fetch the food inventory for the logged-in user."""
     inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).first()
+    
     if not inventory:
         return {"items": []}
-    return {"items": inventory.ingredients.split(",")}  # Convert stored string to list
 
-### ✅ Store or Update User’s Food Inventory
-@router.post("/food-inventory")
-def update_food_inventory(inventory_data: FoodInventoryUpdateSchema, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """Update or create the food inventory for the logged-in user."""
-    inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).first()
-    
-    if inventory:
-        inventory.ingredients = ",".join(inventory_data.items)  # Store as a string
+    # Convert stored format back into a usable structure
+    items = []
+    for item_str in inventory.items.split(","):
+        parts = item_str.split("|")
+        if len(parts) >= 4:
+            items.append({
+                "name": parts[0],
+                "quantity": int(parts[1]),
+                "desiredQuantity": int(parts[2]),
+                "categories": parts[3:].split("|")  # Convert back to list
+            })
+
+    return {"items": items}
+
+### 📁 Manage Categories
+@router.post("/meal-planning/categories")
+def add_category(category_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    """ Add new categories to the database """
+    existing_categories = db.query(Category).filter(Category.user_id == current_user["id"]).first()
+
+    if existing_categories:
+        existing_categories.categories = ",".join(set(existing_categories.categories.split(",") + category_data["categories"]))
     else:
-        inventory = FoodInventory(user_id=current_user["id"], ingredients=",".join(inventory_data.items))
-        db.add(inventory)
-    
+        new_category_entry = Category(user_id=current_user["id"], categories=",".join(category_data["categories"]))
+        db.add(new_category_entry)
+
     db.commit()
-    db.refresh(inventory)
-    return {"message": "Food inventory updated", "items": inventory_data.items}
+    return {"message": "Categories updated successfully."}
+
+@router.get("/meal-planning/categories")
+def get_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    """ Fetch all categories created by the user """
+    category_entry = db.query(Category).filter(Category.user_id == current_user["id"]).first()
+    if not category_entry:
+        return {"categories": []}
+
+    return {"categories": category_entry.categories.split(",")}
