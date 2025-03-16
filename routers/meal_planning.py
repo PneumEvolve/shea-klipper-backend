@@ -7,7 +7,7 @@ from routers.auth import get_current_user_dependency
 router = APIRouter()
 
 ### 🥘 Add a New Recipe
-@router.post("/meal-planning/recipes")
+@router.post("/recipes")
 def add_recipe(recipe_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     new_recipe = Recipe(
         user_id=current_user["id"],
@@ -21,7 +21,7 @@ def add_recipe(recipe_data: dict, db: Session = Depends(get_db), current_user: d
     return new_recipe
 
 ### 📖 Get All Recipes for a User
-@router.get("/meal-planning/recipes")
+@router.get("/recipes")
 def get_recipes(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     recipes = db.query(Recipe).filter(Recipe.user_id == current_user["id"]).all()
     return [
@@ -35,7 +35,7 @@ def get_recipes(db: Session = Depends(get_db), current_user: dict = Depends(get_
     ]
 
 ### 🛒 Store User’s Food Inventory
-@router.post("/meal-planning/food-inventory")
+@router.post("/food-inventory")
 def update_food_inventory(food_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     """ Updates food inventory with item name, quantity, desired quantity, and categories """
     try:
@@ -58,7 +58,7 @@ def update_food_inventory(food_data: dict, db: Session = Depends(get_db), curren
         raise HTTPException(status_code=400, detail=f"Error updating food inventory: {str(e)}")
 
 ### 🔍 Get User’s Food Inventory
-@router.get("/meal-planning/food-inventory")
+@router.get("/food-inventory")
 def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).first()
     
@@ -80,7 +80,7 @@ def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depen
     return {"items": items}
 
 ### 📁 Manage Categories
-@router.post("/meal-planning/categories")
+@router.post("/categories")
 def add_category(category_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     """ Add new categories to the database """
     existing_categories = db.query(Category).filter(Category.user_id == current_user["id"]).first()
@@ -94,7 +94,7 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
     db.commit()
     return {"message": "Categories updated successfully."}
 
-@router.get("/meal-planning/categories")
+@router.get("/categories")
 def get_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     """ Fetch all categories created by the user """
     category_entry = db.query(Category).filter(Category.user_id == current_user["id"]).first()
