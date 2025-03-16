@@ -38,29 +38,35 @@ def get_recipes(db: Session = Depends(get_db), current_user: dict = Depends(get_
 ### 🛒 Store User’s Food Inventory
 @router.post("/food-inventory")
 def update_food_inventory(food_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """ Updates food inventory with item name, quantity, desired quantity, and categories """
     try:
-        inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).all()
+        # Fetch existing inventory
+        existing_inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).all()
 
-        # Remove existing inventory
-        for item in inventory:
-            db.delete(item)
+        # Convert existing items to a dictionary for easy lookup
+        inventory_dict = {item.name: item for item in existing_inventory}
 
-        # Add new inventory
         for item in food_data["items"]:
-            new_inventory = FoodInventory(
-                user_id=current_user["id"],
-                name=item["name"],
-                quantity=item["quantity"],
-                desired_quantity=item["desiredQuantity"],
-                categories=",".join(map(str, item["categories"]))  # Store category IDs as a string
-            )
-            db.add(new_inventory)
+            if item["name"] in inventory_dict:
+                # Update existing item
+                inventory_dict[item["name"]].quantity = item["quantity"]
+                inventory_dict[item["name"]].desired_quantity = item["desiredQuantity"]
+                inventory_dict[item["name"]].categories = ",".join(item["categories"])
+            else:
+                # Add new item
+                new_inventory = FoodInventory(
+                    user_id=current_user["id"],
+                    name=item["name"],
+                    quantity=item["quantity"],
+                    desired_quantity=item["desiredQuantity"],
+                    categories=",".join(item["categories"])
+                )
+                db.add(new_inventory)
 
         db.commit()
         return {"message": "Food inventory updated successfully."}
 
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=f"Error updating food inventory: {str(e)}")
 
 ### 🔍 Get User’s Food Inventory
@@ -78,7 +84,7 @@ def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depen
                 "name": item.name,
                 "quantity": item.quantity,
                 "desiredQuantity": item.desired_quantity,
-                "categories": item.categories.split(",") if item.categories else []  # ✅ Fix: Don't convert to int
+                "categories": item.categories.split(",") if item.categories else []  # ✅ Ensure empty categories don't break
             }
             for item in inventory
         ]
