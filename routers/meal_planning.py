@@ -94,32 +94,30 @@ def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depen
 @router.post("/categories")
 def add_category(category_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     try:
-        categories_input = category_data.get("categories", [])
-        if not isinstance(categories_input, list):
-            raise HTTPException(status_code=400, detail="Invalid format for categories")
+        if "categories" not in category_data or not isinstance(category_data["categories"], list):
+            raise HTTPException(status_code=400, detail="Invalid request format. Expected 'categories': [list]")
+
+        category_type = category_data.get("type", "food")  # default to "food" if missing
 
         added_categories = []
-        for category in categories_input:
-            name = category.get("name")
-            cat_type = category.get("type", "food")  # default to 'food'
-
-            if not name:
-                continue
-
-            existing = db.query(Category).filter(Category.name == name).first()
-            if not existing:
-                new_category = Category(name=name, type=cat_type)
+        for category_name in category_data["categories"]:
+            existing_category = db.query(Category).filter(Category.name == category_name).first()
+            if not existing_category:
+                new_category = Category(name=category_name, type=category_type)
                 db.add(new_category)
                 db.commit()
                 db.refresh(new_category)
+                added_categories.append(new_category.name)
             else:
-                new_category = existing
+                added_categories.append(existing_category.name)
 
-            db.execute(user_categories.insert().values(user_id=current_user["id"], category_id=new_category.id))
+            # Associate user with category
+            category_id = new_category.id if not existing_category else existing_category.id
+            db.execute(user_categories.insert().values(user_id=current_user["id"], category_id=category_id))
             db.commit()
-            added_categories.append({"name": new_category.name, "type": new_category.type})
 
-        return {"message": "Categories added successfully.", "added": added_categories}
+        return {"message": "Categories updated successfully.", "added_categories": added_categories}
+
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
