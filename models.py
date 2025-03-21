@@ -66,6 +66,7 @@ class Category(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False)
+    type = Column(String, nullable=False, default="food")  # 🔥 NEW: 'food' or 'recipe'
 
     # ✅ Many-to-Many relationship with users (via user_categories table)
     users = relationship("User", secondary=user_categories, back_populates="categories")

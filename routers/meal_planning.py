@@ -93,36 +93,40 @@ def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depen
 ### 📁 Manage Categories
 @router.post("/categories")
 def add_category(category_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """ Add new categories to the database and associate them with the user """
     try:
-        if "categories" not in category_data or not isinstance(category_data["categories"], list):
-            raise HTTPException(status_code=400, detail="Invalid request format. Expected 'categories': [list]")
+        categories_input = category_data.get("categories", [])
+        if not isinstance(categories_input, list):
+            raise HTTPException(status_code=400, detail="Invalid format for categories")
 
         added_categories = []
-        for category_name in category_data["categories"]:
-            existing_category = db.query(Category).filter(Category.name == category_name).first()
-            if not existing_category:
-                new_category = Category(name=category_name)
+        for category in categories_input:
+            name = category.get("name")
+            cat_type = category.get("type", "food")  # default to 'food'
+
+            if not name:
+                continue
+
+            existing = db.query(Category).filter(Category.name == name).first()
+            if not existing:
+                new_category = Category(name=name, type=cat_type)
                 db.add(new_category)
                 db.commit()
                 db.refresh(new_category)
-                added_categories.append(new_category.name)
             else:
-                added_categories.append(existing_category.name)
+                new_category = existing
 
-            # Associate user with category
-            db.execute(user_categories.insert().values(user_id=current_user["id"], category_id=new_category.id if not existing_category else existing_category.id))
+            db.execute(user_categories.insert().values(user_id=current_user["id"], category_id=new_category.id))
             db.commit()
+            added_categories.append({"name": new_category.name, "type": new_category.type})
 
-        return {"message": "Categories updated successfully.", "added_categories": added_categories}
-
+        return {"message": "Categories added successfully.", "added": added_categories}
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 ### 📁 Get All Categories for a User
-@router.get("/categories", response_model=dict)  # Ensure it returns a JSON response
+@router.get("/categories", response_model=dict)
 def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    """ Fetch all categories linked to the user. """
     try:
         categories = (
             db.query(Category)
@@ -131,11 +135,13 @@ def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depe
             .all()
         )
 
-        return {"categories": [{"id": category.id, "name": category.name} for category in categories]}
+        food = [{"id": c.id, "name": c.name} for c in categories if c.type == "food"]
+        recipes = [{"id": c.id, "name": c.name} for c in categories if c.type == "recipe"]
 
+        return {"food": food, "recipes": recipes}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 @router.delete("/recipes/{recipe_id}")
 def delete_recipe(recipe_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     recipe = db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == current_user["id"]).first()
