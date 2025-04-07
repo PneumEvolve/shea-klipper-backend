@@ -58,8 +58,7 @@ def get_recipes(
 ):
     query = db.query(Recipe).filter(Recipe.user_id == current_user["id"])
 
-    if category:
-        # Optional: Add case-insensitive matching
+    if category and category.lower() != "all":
         query = query.filter(Recipe.category == category)
 
     recipes = query.all()
@@ -69,10 +68,11 @@ def get_recipes(
             "name": r.name,
             "ingredients": r.ingredients.split(","),
             "instructions": r.instructions,
-            "category": r.category if hasattr(r, "category") else None  # Optional: if you plan to use categories
+            "category": r.category,
         }
         for r in recipes
     ]
+
 
 ### 🛒 Store User’s Food Inventory
 @router.post("/food-inventory")
