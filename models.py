@@ -46,6 +46,7 @@ class Recipe(Base):
     ingredients = Column(Text, nullable=False)
     instructions = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    category = Column(String, nullable=True)
 
     user = relationship("User", back_populates="recipes")
 

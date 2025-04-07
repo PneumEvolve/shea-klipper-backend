@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from models import Recipe, FoodInventory, Category, user_categories
 from database import get_db
@@ -9,28 +9,67 @@ router = APIRouter()
 
 ### 🥘 Add a New Recipe
 @router.post("/recipes")
-def add_recipe(recipe_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    new_recipe = Recipe(
-        user_id=current_user["id"],
-        name=recipe_data["name"],
-        ingredients=",".join(recipe_data["ingredients"]),
-        instructions=recipe_data["instructions"]
-    )
-    db.add(new_recipe)
+def add_or_update_recipe(
+    recipe_data: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    recipe_id = recipe_data.get("id")
+    ingredients = recipe_data["ingredients"]
+
+    if isinstance(ingredients, list):
+        ingredients = ",".join(ingredients)
+    
+    if recipe_id:
+        recipe = db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == current_user["id"]).first()
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found.")
+        
+        recipe.name = recipe_data["name"]
+        recipe.ingredients = ingredients
+        recipe.instructions = recipe_data["instructions"]
+        recipe.category = recipe_data.get("category")
+    else:
+        recipe = Recipe(
+            user_id=current_user["id"],
+            name=recipe_data["name"],
+            ingredients=ingredients,
+            instructions=recipe_data["instructions"],
+            category=recipe_data.get("category"),
+        )
+        db.add(recipe)
+
     db.commit()
-    db.refresh(new_recipe)
-    return new_recipe
+    db.refresh(recipe)
+    return {
+        "id": recipe.id,
+        "name": recipe.name,
+        "ingredients": recipe.ingredients.split(","),
+        "instructions": recipe.instructions,
+        "category": recipe.category
+    }
 
 ### 📖 Get All Recipes for a User
 @router.get("/recipes")
-def get_recipes(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    recipes = db.query(Recipe).filter(Recipe.user_id == current_user["id"]).all()
+def get_recipes(
+    category: str = Query(None),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    query = db.query(Recipe).filter(Recipe.user_id == current_user["id"])
+
+    if category:
+        # Optional: Add case-insensitive matching
+        query = query.filter(Recipe.category == category)
+
+    recipes = query.all()
     return [
         {
             "id": r.id,
             "name": r.name,
             "ingredients": r.ingredients.split(","),
-            "instructions": r.instructions
+            "instructions": r.instructions,
+            "category": r.category if hasattr(r, "category") else None  # Optional: if you plan to use categories
         }
         for r in recipes
     ]
