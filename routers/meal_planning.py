@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 import requests
-from bs4 import Beautiful Soup
+from bs4 import BeautifulSoup
 import openai
 import json
 from sqlalchemy.orm import Session
