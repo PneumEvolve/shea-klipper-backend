@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base  # Import Base model from database.py
@@ -71,3 +71,23 @@ class Category(Base):
 
     # ✅ Many-to-Many relationship with users (via user_categories table)
     users = relationship("User", secondary=user_categories, back_populates="categories")
+
+class GroceryList(Base):
+    __tablename__ = "grocery_lists"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    items = relationship("GroceryItem", back_populates="list", cascade="all, delete-orphan")
+
+
+class GroceryItem(Base):
+    __tablename__ = "grocery_items"
+    id = Column(Integer, primary_key=True, index=True)
+    list_id = Column(Integer, ForeignKey("grocery_lists.id"), nullable=False)
+    name = Column(String, nullable=False)
+    quantity = Column(String, nullable=True)
+    have = Column(Boolean, default=False)  # ✅ whether the item is already in your inventory
+    note = Column(String, nullable=True)
+
+    list = relationship("GroceryList", back_populates="items")

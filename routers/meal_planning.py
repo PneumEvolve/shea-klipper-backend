@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 import openai
 import json
 from sqlalchemy.orm import Session
-from models import Recipe, FoodInventory, Category, user_categories
+from models import Recipe, FoodInventory, Category, GroceryList, GroceryItem, user_categories
 from database import get_db
 from routers.auth import get_current_user_dependency
 from sqlalchemy.sql import text
@@ -283,3 +283,124 @@ def delete_category(category_id: int, db: Session = Depends(get_db), current_use
     db.delete(category)
     db.commit()
     return {"message": "Category deleted successfully"}
+
+@router.post("/grocery-lists/from-recipes")
+def generate_grocery_list_from_recipes(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    recipe_ids = payload.get("recipe_ids", [])
+    if not recipe_ids:
+        raise HTTPException(status_code=400, detail="No recipe IDs provided")
+
+    recipes = db.query(Recipe).filter(
+        Recipe.id.in_(recipe_ids),
+        Recipe.user_id == current_user["id"]
+    ).all()
+
+    grocery_list = GroceryList(
+        user_id=current_user["id"],
+        name=payload.get("name", "New Grocery List")
+    )
+    db.add(grocery_list)
+    db.flush()  # So we can get grocery_list.id
+
+    # Aggregate ingredients
+    ingredient_counts = {}
+    for recipe in recipes:
+        for item in recipe.ingredients.split(","):
+            item = item.strip()
+            if item:
+                ingredient_counts[item] = ingredient_counts.get(item, 0) + 1
+
+    for ingredient, quantity in ingredient_counts.items():
+        db.add(GroceryItem(
+            grocery_list_id=grocery_list.id,
+            name=ingredient,
+            quantity=quantity
+        ))
+
+    db.commit()
+    db.refresh(grocery_list)
+
+    return {
+        "grocery_list_id": grocery_list.id,
+        "items": [{"name": k, "quantity": v} for k, v in ingredient_counts.items()]
+    }
+@router.get("/grocery-lists")
+def get_grocery_lists(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    lists = db.query(GroceryList).filter(GroceryList.user_id == current_user["id"]).all()
+    return [{"id": gl.id, "name": gl.name, "completed": gl.completed} for gl in lists]
+
+
+@router.get("/grocery-lists/{list_id}/items")
+def get_grocery_list_items(list_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    grocery_list = db.query(GroceryList).filter_by(id=list_id, user_id=current_user["id"]).first()
+    if not grocery_list:
+        raise HTTPException(status_code=404, detail="Grocery list not found")
+
+    items = db.query(GroceryItem).filter(GroceryItem.grocery_list_id == list_id).all()
+    return [
+        {
+            "id": item.id,
+            "name": item.name,
+            "quantity": item.quantity,
+            "checked": item.checked
+        } for item in items
+    ]
+
+@router.put("/grocery-items/{item_id}")
+def update_grocery_item(
+    item_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    item = db.query(GroceryItem).join(GroceryList).filter(
+        GroceryItem.id == item_id,
+        GroceryList.user_id == current_user["id"]
+    ).first()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    item.name = payload.get("name", item.name)
+    item.quantity = payload.get("quantity", item.quantity)
+    item.checked = payload.get("checked", item.checked)
+
+    db.commit()
+    return {"message": "Item updated"}
+
+@router.post("/grocery-lists/{list_id}/import-to-inventory")
+def import_checked_items_to_inventory(
+    list_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    items = db.query(GroceryItem).join(GroceryList).filter(
+        GroceryItem.grocery_list_id == list_id,
+        GroceryList.user_id == current_user["id"],
+        GroceryItem.checked == True
+    ).all()
+
+    for item in items:
+        existing = db.query(FoodInventory).filter_by(
+            name=item.name,
+            user_id=current_user["id"]
+        ).first()
+
+        if existing:
+            existing.quantity += item.quantity
+        else:
+            new_food = FoodInventory(
+                user_id=current_user["id"],
+                name=item.name,
+                quantity=item.quantity,
+                desired_quantity=item.quantity,
+                categories=""
+            )
+            db.add(new_food)
+
+    db.commit()
+    return {"message": f"{len(items)} items added to inventory"}
