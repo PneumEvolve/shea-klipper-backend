@@ -26,3 +26,6 @@ class TranscriptionCreate(BaseModel):
 
 class FoodInventoryUpdateSchema(BaseModel):
     items: List[str]
+
+class RecipeSelection(BaseModel):
+    recipe_ids: List[int]
