@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+import requests
+from bs4 import Beautiful Soup
+import openai
+import json
 from sqlalchemy.orm import Session
 from models import Recipe, FoodInventory, Category, user_categories
 from database import get_db
@@ -73,6 +77,71 @@ def get_recipes(
         for r in recipes
     ]
 
+@router.post("/recipes/import")
+def import_recipe_from_url(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    url = payload.get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="URL is required")
+
+    try:
+        # 🟢 Step 1: Fetch the webpage
+        response = requests.get(url, timeout=10)
+        if not response.ok:
+            raise HTTPException(status_code=400, detail="Failed to fetch URL content")
+
+        html = response.text
+        soup = BeautifulSoup(html, "html.parser")
+        text = soup.get_text(separator="\n")
+
+        # 🧠 Step 2: Send to OpenAI for parsing
+        prompt = f"""
+        Extract the recipe from the following webpage content.
+        Return a JSON object like:
+        {{
+            "name": "Recipe Name",
+            "ingredients": ["item 1", "item 2", "..."],
+            "instructions": "Step-by-step instructions"
+        }}
+
+        Webpage:
+        {text}
+        """
+
+        chat = openai.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You extract recipes from messy webpage content and return clean, structured data in JSON format.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+        )
+
+        response_text = chat.choices[0].message.content.strip()
+
+        # ✅ Try to parse result as JSON
+        try:
+            data = json.loads(response_text)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=500, detail="AI returned invalid JSON")
+
+        # ✅ Ensure basic fields exist
+        if not data.get("name") or not data.get("ingredients") or not data.get("instructions"):
+            raise HTTPException(status_code=500, detail="Incomplete recipe data from AI")
+
+        return {
+            "name": data["name"],
+            "ingredients": data["ingredients"],
+            "instructions": data["instructions"],
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error importing recipe: {str(e)}")
 
 ### 🛒 Store User’s Food Inventory
 @router.post("/food-inventory")
