@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 RECAPTCHA_SECRET = os.getenv("RECAPTCHA_SECRET")  # 🔒 Load from .env
+print("🔍 RECAPTCHA_SECRET:", RECAPTCHA_SECRET)
 SECRET_KEY = "your_secret_key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
