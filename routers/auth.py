@@ -9,8 +9,11 @@ from models import User
 from pydantic import BaseModel
 import requests
 import os
+from dotenv import load_dotenv
 
-RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY")  # 🔒 Load from .env
+load_dotenv()
+
+RECAPTCHA_SECRET = os.getenv("RECAPTCHA_SECRET")  # 🔒 Load from .env
 SECRET_KEY = "your_secret_key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -43,11 +46,12 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
 def verify_recaptcha(token: str) -> bool:
     url = "https://www.google.com/recaptcha/api/siteverify"
     payload = {
-        "secret": RECAPTCHA_SECRET_KEY,
+        "secret": RECAPTCHA_SECRET,
         "response": token,
     }
     response = requests.post(url, data=payload)
     result = response.json()
+    print("🔍 reCAPTCHA verification result:", result)  # ✅ ADD THIS
     return result.get("success", False)
 
 # ✅ SIGNUP Endpoint
