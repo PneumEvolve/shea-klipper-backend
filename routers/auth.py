@@ -152,3 +152,22 @@ def request_password_reset(request_data: PasswordResetRequest, db: Session = Dep
         "reset_token": reset_token,
         # eventually: "reset_link": f"https://your-frontend/reset-password?token={reset_token}"
     }
+
+class PasswordResetPayload(BaseModel):
+    token: str
+    new_password: str
+
+@router.post("/reset-password")
+def reset_password(payload: PasswordResetPayload, db: Session = Depends(get_db)):
+    email = verify_password_reset_token(payload.token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.hashed_password = hash_password(payload.new_password)
+    db.commit()
+
+    return {"message": "Password has been reset successfully"}
