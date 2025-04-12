@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import auth, transcriptions, summarization, meal_planning, grocery_list  # ✅ Make sure meal_planning is included
-
+from dotenv import load_dotenv
+load_dotenv()
 app = FastAPI()
 
 # CORS Setup

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Security
+from fastapi import APIRouter, HTTPException, Depends, Security, Request
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import jwt
@@ -7,7 +7,10 @@ from passlib.context import CryptContext
 from database import get_db
 from models import User
 from pydantic import BaseModel
+import requests
+import os
 
+RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY")  # 🔒 Load from .env
 SECRET_KEY = "your_secret_key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
@@ -37,6 +40,16 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+def verify_recaptcha(token: str) -> bool:
+    url = "https://www.google.com/recaptcha/api/siteverify"
+    payload = {
+        "secret": RECAPTCHA_SECRET_KEY,
+        "response": token,
+    }
+    response = requests.post(url, data=payload)
+    result = response.json()
+    return result.get("success", False)
+
 # ✅ SIGNUP Endpoint
 @router.post("/signup")
 def signup(user_data: UserCreate, db: Session = Depends(get_db)):
@@ -54,7 +67,18 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
 
 # ✅ LOGIN Endpoint
 @router.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    # 🔒 Step 1: Extract and verify reCAPTCHA token
+    form = await request.form()
+    recaptcha_token = form.get("recaptcha_token")
+    if not recaptcha_token or not verify_recaptcha(recaptcha_token):
+        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
+
+    # 🔐 Step 2: Continue with your normal login logic
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
