@@ -6,12 +6,17 @@ from datetime import timedelta, datetime
 from passlib.context import CryptContext
 from database import get_db
 from models import User
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 import requests
-import os
 from dotenv import load_dotenv
+import os
+from pathlib import Path
+from typing import Optional
 
-load_dotenv()
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
+
+print("RECAPTCHA_SECRET:", os.getenv("RECAPTCHA_SECRET"))
 
 RECAPTCHA_SECRET = os.getenv("RECAPTCHA_SECRET")  # 🔒 Load from .env
 print("🔍 Loaded RECAPTCHA_SECRET:", RECAPTCHA_SECRET)
@@ -54,6 +59,22 @@ def verify_recaptcha(token: str) -> bool:
     result = response.json()
     print("🔍 reCAPTCHA verification result:", result)  # ✅ ADD THIS
     return result.get("success", False)
+
+# 🔐 Generate Password Reset Token
+def create_password_reset_token(email: str, expires_delta: timedelta = timedelta(minutes=30)) -> str:
+    expire = datetime.utcnow() + expires_delta
+    to_encode = {"sub": email, "exp": expire}
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+# ✅ Verify Password Reset Token
+def verify_password_reset_token(token: str) -> Optional[str]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get("sub")  # should be the email
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=400, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="Invalid token")
 
 # ✅ SIGNUP Endpoint
 @router.post("/signup")
@@ -113,3 +134,21 @@ def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Sessio
 def get_current_user_route(current_user: dict = Depends(get_current_user_dependency)):
     """Fetch the currently authenticated user."""
     return {"id": current_user["id"], "email": current_user["email"]}
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+@router.post("/request-password-reset")
+def request_password_reset(request_data: PasswordResetRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == request_data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with that email")
+
+    reset_token = create_password_reset_token(user.email)
+
+    # 🚨 For now, just return the token. Later we'll email it.
+    return {
+        "message": "Password reset token generated",
+        "reset_token": reset_token,
+        # eventually: "reset_link": f"https://your-frontend/reset-password?token={reset_token}"
+    }
