@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 import os
 from pathlib import Path
 from typing import Optional
+from utils.email import send_email
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -145,10 +146,16 @@ def request_password_reset(request_data: PasswordResetRequest, db: Session = Dep
         raise HTTPException(status_code=404, detail="No account found with that email")
 
     reset_token = create_password_reset_token(user.email)
-
-    # 🚨 For now, just return the token. Later we'll email it.
+# ✅ Send the email with reset link
+    frontend_url = os.getenv("FRONTEND_URL", "https://sheas-app.netlify.app")
+    reset_link = f"{frontend_url}/reset-password?token={reset_token}"
+    send_email(
+        to_email=user.email,
+        subject="Reset your password",
+        body=f"Click here to reset: <a href='{reset_link}'>Reset Password</a>"
+    )
     return {
-        "message": "Password reset token generated",
+        "message": "Password reset link sent to your email",
         "reset_token": reset_token,
         # eventually: "reset_link": f"https://your-frontend/reset-password?token={reset_token}"
     }
