@@ -18,6 +18,7 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
 
+    transcription_usages = relationship("TranscriptionUsage", back_populates="user")
     transcriptions = relationship("Transcription", back_populates="user", cascade="all, delete-orphan")
     recipes = relationship("Recipe", back_populates="user", cascade="all, delete-orphan")
     food_inventory = relationship("FoodInventory", back_populates="user", cascade="all, delete-orphan")
