@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 import os
 from pathlib import Path
 from typing import Optional
-from utils.email import send_email
+from utilities.email import send_email
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -20,7 +20,6 @@ load_dotenv(dotenv_path=env_path)
 print("RECAPTCHA_SECRET:", os.getenv("RECAPTCHA_SECRET"))
 
 RECAPTCHA_SECRET = os.getenv("RECAPTCHA_SECRET")  # 🔒 Load from .env
-print("🔍 Loaded RECAPTCHA_SECRET:", RECAPTCHA_SECRET)
 SECRET_KEY = "your_secret_key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
