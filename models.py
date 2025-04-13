@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base  # Import Base model from database.py
@@ -91,3 +91,14 @@ class GroceryItem(Base):
     note = Column(String, nullable=True)
 
     list = relationship("GroceryList", back_populates="items")
+
+class TranscriptionUsage(Base):
+    __tablename__ = "transcription_usage"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    tokens_used = Column(Integer)
+    cost_usd = Column(Float)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="transcription_usages")
