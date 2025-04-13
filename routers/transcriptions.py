@@ -1,10 +1,10 @@
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, func
 import openai
 import shutil
 import os
-from models import Transcription, TranscriptionUsage
+from models import Transcription, TranscriptionUsage, Payment
 from database import get_db
 from routers.auth import get_current_user_dependency
 from dotenv import load_dotenv
@@ -23,6 +23,20 @@ async def transcribe_audio(
     current_user: dict = Depends(get_current_user_dependency)
 ):
     try:
+        # ✅ Check token balance
+        total_tokens_used = db.query(func.sum(TranscriptionUsage.tokens_used)).filter(
+            TranscriptionUsage.user_id == current_user["id"]
+        ).scalar() or 0
+
+        total_tokens_paid = db.query(func.sum(Payment.tokens_purchased)).filter(
+            Payment.user_id == current_user["id"]
+        ).scalar() or 0
+
+        tokens_remaining = total_tokens_paid - total_tokens_used
+        if tokens_remaining <= 0:
+            raise HTTPException(status_code=402, detail="You’ve run out of tokens. Please purchase more to continue.")
+
+        # ✅ Save file temporarily
         file_path = os.path.join(UPLOAD_DIR, file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -35,6 +49,14 @@ async def transcribe_audio(
 
         transcription_text = response.text
 
+        # ✅ Estimate token usage and cost
+        token_estimate = len(transcription_text) // 4
+        if token_estimate > tokens_remaining:
+            raise HTTPException(status_code=402, detail="Not enough tokens to cover this transcription.")
+
+        cost = token_estimate * 0.000015  # Whisper pricing estimate
+
+        # ✅ Store the transcription
         transcription = Transcription(
             user_id=current_user["id"],
             filename=file.filename,
@@ -45,12 +67,7 @@ async def transcribe_audio(
         db.commit()
         db.refresh(transcription)
 
-        os.remove(file_path)
-
-        # ✅ Estimate token usage and cost
-        token_estimate = len(transcription_text) // 4
-        cost = token_estimate * 0.000015  # Whisper pricing estimate
-
+        # ✅ Store usage
         usage_entry = TranscriptionUsage(
             user_id=current_user["id"],
             transcription_id=transcription.id,
@@ -60,6 +77,8 @@ async def transcribe_audio(
         )
         db.add(usage_entry)
         db.commit()
+
+        os.remove(file_path)
 
         return {
             "id": transcription.id,

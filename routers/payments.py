@@ -2,6 +2,8 @@ from fastapi import APIRouter, Request, HTTPException
 import stripe
 import os
 from dotenv import load_dotenv
+from models import User
+from sqlalchemy.orm import Session
 
 load_dotenv()
 
@@ -37,3 +39,10 @@ async def stripe_webhook(request: Request):
         # create_paid_token_or_credit(user)
 
     return {"status": "success"}
+
+def handle_payment_success(user_id: int, db: Session):
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        user.has_active_payment = True
+        user.api_balance_dollars += 5.00  # Or whatever price you charge
+        db.commit()
