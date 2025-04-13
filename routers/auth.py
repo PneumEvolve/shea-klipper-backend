@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 import os
 from pathlib import Path
 from typing import Optional
-from utilities.email import send_email
+from utils.email import send_email
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
