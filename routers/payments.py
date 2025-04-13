@@ -1,50 +1,39 @@
-from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
-from models import TranscriptionUsage
-from database import get_db
-import os
+from fastapi import APIRouter, Request, HTTPException
 import stripe
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 router = APIRouter()
 
-# Load Stripe secret key from environment
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+endpoint_secret = os.getenv("STRIPE_WEBHOOK_SECRET")  # This comes from Stripe dashboard
 
-@router.post("/payments/create-checkout-session")
-def create_checkout_session(transcription_id: int, db: Session = Depends(get_db)):
-    # Step 1: Look up transcription usage from DB
-    usage = db.query(TranscriptionUsage).filter(
-        TranscriptionUsage.transcription_id == transcription_id
-    ).first()
+@router.post("/payments/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
 
-    if not usage:
-        raise HTTPException(status_code=404, detail="Transcription usage not found")
-
-    # Step 2: Calculate Stripe-compatible cost in cents
-    cost_per_1000_tokens = 0.01  # USD per 1000 tokens
-    amount = int((usage.tokens_used / 1000) * cost_per_1000_tokens * 100)
-
-    if amount < 1:
-        amount = 1  # Minimum of $0.01 to avoid Stripe errors
-
-    # Step 3: Create a Stripe Checkout session
     try:
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {
-                        "name": f"Transcription ID: {transcription_id}",
-                    },
-                    "unit_amount": amount,
-                },
-                "quantity": 1,
-            }],
-            mode="payment",
-            success_url="https://sheas-app.netlify.app/payment-success",
-            cancel_url="https://sheas-app.netlify.app/payment-cancel",
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, endpoint_secret
         )
-        return {"checkout_url": session.url}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except ValueError as e:
+        print("❌ Invalid payload:", e)
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.error.SignatureVerificationError as e:
+        print("❌ Signature error:", e)
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # ✅ Listen for successful payment event
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        customer_email = session.get("customer_email", "unknown")
+        print("✅ Payment completed for:", customer_email)
+
+        # 🔁 Optionally: Log to database that this user paid
+        # user = db.query(User).filter(User.email == customer_email).first()
+        # create_paid_token_or_credit(user)
+
+    return {"status": "success"}
