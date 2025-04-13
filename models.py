@@ -17,6 +17,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+    has_active_payment = Column(Boolean, default=False)
+    api_balance_dollars = Column(Float, default=0.0)
 
     transcription_usages = relationship("TranscriptionUsage", back_populates="user")
     transcriptions = relationship("Transcription", back_populates="user", cascade="all, delete-orphan")

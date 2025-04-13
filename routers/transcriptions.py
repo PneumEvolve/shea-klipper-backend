@@ -1,7 +1,8 @@
 from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from sqlalchemy.orm import Session, func
+from sqlalchemy.orm import Session
 import openai
+from sqlalchemy import func
 import shutil
 import os
 from models import Transcription, TranscriptionUsage, Payment
