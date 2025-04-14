@@ -102,7 +102,7 @@ class TranscriptionUsage(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     tokens_used = Column(Integer)
-    cost_usd = Column(Float)
+    cost = Column(Float)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="transcription_usages")
