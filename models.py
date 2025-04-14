@@ -20,6 +20,7 @@ class User(Base):
     has_active_payment = Column(Boolean, default=False)
     api_balance_dollars = Column(Float, default=0.0)
 
+    payments = relationship("Payment", back_populates="user")
     transcription_usages = relationship("TranscriptionUsage", back_populates="user")
     transcriptions = relationship("Transcription", back_populates="user", cascade="all, delete-orphan")
     recipes = relationship("Recipe", back_populates="user", cascade="all, delete-orphan")
@@ -105,3 +106,15 @@ class TranscriptionUsage(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="transcription_usages")
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, default="usd")
+    stripe_session_id = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="payments")
