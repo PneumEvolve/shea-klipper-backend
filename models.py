@@ -116,5 +116,6 @@ class Payment(Base):
     currency = Column(String, default="usd")
     stripe_session_id = Column(String, unique=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    tokens_purchased = Column(Integer)
 
     user = relationship("User", back_populates="payments")
