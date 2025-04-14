@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 import stripe
 import os
 from dotenv import load_dotenv
-from models import User
+from models import User, TranscriptionUsage
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from database import get_db
+from routers.auth import get_current_user_dependency
+
 
 load_dotenv()
 
@@ -46,3 +50,18 @@ def handle_payment_success(user_id: int, db: Session):
         user.has_active_payment = True
         user.api_balance_dollars += 5.00  # Or whatever price you charge
         db.commit()
+
+@router.get("/usage-balance")
+def get_usage_balance(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    total_spent = db.query(func.sum(TranscriptionUsage.cost)).filter(
+        TranscriptionUsage.user_id == current_user["id"]
+    ).scalar() or 0.0
+
+    # For example, give $5 of free credits for now
+    free_credits = 5.00
+    remaining = round(free_credits - total_spent, 4)
+
+    return {"remaining_balance": max(remaining, 0.0)}
