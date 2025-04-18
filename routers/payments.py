@@ -65,3 +65,40 @@ def get_usage_balance(
     remaining = round(free_credits - total_spent, 4)
 
     return {"remaining_balance": max(remaining, 0.0)}
+
+@router.post("/create-checkout-session")
+async def create_checkout_session(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency),
+):
+    try:
+        # Define pricing — 1 token = $0.01, so $5 gives 500 tokens
+        token_amount = 500
+        price_in_cents = 500  # $5.00
+
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "product_data": {
+                        "name": f"{token_amount} Transcription Tokens",
+                    },
+                    "unit_amount": price_in_cents,
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url=os.getenv("FRONTEND_URL", "http://localhost:5173") + "?success=true",
+            cancel_url=os.getenv("FRONTEND_URL", "http://localhost:5173") + "?canceled=true",
+            metadata={
+                "user_id": str(current_user["id"]),
+                "tokens_purchased": str(token_amount)
+            }
+        )
+
+        return {"checkout_url": checkout_session.url}
+    except Exception as e:
+        print("❌ Stripe error:", str(e))
+        raise HTTPException(status_code=500, detail="Failed to create checkout session")
