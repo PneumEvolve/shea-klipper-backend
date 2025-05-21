@@ -90,7 +90,7 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
-    return {"id": new_user.id, "email": new_user.email}
+    return UserResponse(id=user.id, email=user.email)
 
 # ✅ LOGIN Endpoint
 @router.post("/login")
