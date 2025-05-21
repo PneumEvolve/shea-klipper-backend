@@ -4,7 +4,7 @@ from database import get_db
 from models import Rambling
 from schemas import RamblingCreate, RamblingOut, User
 from typing import List
-from .auth import get_current_user
+from .auth import get_current_user_dependency as get_current_user
 from schemas import User as UserSchema
 
 router = APIRouter()
@@ -12,16 +12,16 @@ router = APIRouter()
 @router.get("/ramblings")
 def get_user_ramblings(
     db: Session = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_user_dependency),
+    current_user: UserSchema = Depends(get_current_user),
 ):
     return db.query(Rambling).filter(Rambling.user_id == current_user.id).all()
 
 @router.post("/ramblings")
-def create_rambling(rambling_data: RamblingCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    new_rambling = Rambling(
-        content=rambling_data.content,
-        tag=rambling_data.tag,
-        user_id=current_user.id  # ✅ attach user ID here
+def create_rambling(
+    rambling_data: RamblingCreate,
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user),  # 👈 match type to schema
+):
     )
     db.add(new_rambling)
     db.commit()
