@@ -11,8 +11,9 @@ class Token(BaseModel):
     token_type: str
 
 class UserResponse(BaseModel):
-    email: EmailStr
     id: int
+    email: EmailStr
+    
 
     class Config:
         from_attributes = True  # ✅ Fix for Pydantic V2
