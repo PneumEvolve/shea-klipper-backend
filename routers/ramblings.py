@@ -2,22 +2,31 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Rambling
-from schemas import RamblingCreate, RamblingOut
+from schemas import RamblingCreate, RamblingOut, User
 from typing import List
+from auth import get_current_user
+from schemas import User as UserSchema
 
 router = APIRouter()
 
-@router.get("/ramblings", response_model=List[RamblingOut])
-def get_ramblings(db: Session = Depends(get_db)):
-    return db.query(Rambling).order_by(Rambling.id.desc()).all()
+@router.get("/ramblings")
+def get_user_ramblings(
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user_dependency),
+):
+    return db.query(Rambling).filter(Rambling.user_id == current_user.id).all()
 
-@router.post("/ramblings", response_model=RamblingOut)
-def create_rambling(data: RamblingCreate, db: Session = Depends(get_db)):
-    new_idea = Rambling(content=data.content, tag=data.tag)
-    db.add(new_idea)
+@router.post("/ramblings")
+def create_rambling(rambling_data: RamblingCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    new_rambling = Rambling(
+        content=rambling_data.content,
+        tag=rambling_data.tag,
+        user_id=current_user.id  # ✅ attach user ID here
+    )
+    db.add(new_rambling)
     db.commit()
-    db.refresh(new_idea)
-    return new_idea
+    db.refresh(new_rambling)
+    return new_rambling
 
 @router.delete("/ramblings/{rambling_id}")
 def delete_rambling(rambling_id: int, db: Session = Depends(get_db)):

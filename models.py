@@ -25,6 +25,7 @@ class User(Base):
     transcriptions = relationship("Transcription", back_populates="user", cascade="all, delete-orphan")
     recipes = relationship("Recipe", back_populates="user", cascade="all, delete-orphan")
     food_inventory = relationship("FoodInventory", back_populates="user", cascade="all, delete-orphan")
+    ramblings = relationship("Rambling", back_populates="user", cascade="all, delete-orphan")
 
     # ✅ Many-to-Many relationship with categories (via user_categories table)
     categories = relationship("Category", secondary=user_categories, back_populates="users")
@@ -125,3 +126,6 @@ class Rambling(Base):
     id = Column(Integer, primary_key=True, index=True)
     content = Column(String, nullable=False)
     tag = Column(String, nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"))  # ✅ Connect to user
+
+    user = relationship("User", back_populates="ramblings")

@@ -38,4 +38,11 @@ class RamblingOut(RamblingCreate):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+class User(BaseModel):
+    id: int
+    email: EmailStr
+
+    class Config:
+        from_attributes = True  # or orm_mode = True if you're using Pydantic v1
