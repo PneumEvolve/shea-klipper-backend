@@ -22,7 +22,7 @@ def create_rambling(
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user),  # 👈 match type to schema
 ):
-    )
+    
     db.add(new_rambling)
     db.commit()
     db.refresh(new_rambling)
