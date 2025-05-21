@@ -5,7 +5,7 @@ from models import Rambling
 from schemas import RamblingCreate, RamblingOut, User
 from typing import List
 from .auth import get_current_user_dependency as get_current_user
-from schemas import User as UserSchema
+from schemas import UserResponse as UserSchema
 
 router = APIRouter()
 
@@ -20,9 +20,13 @@ def get_user_ramblings(
 def create_rambling(
     rambling_data: RamblingCreate,
     db: Session = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_user),  # 👈 match type to schema
+    current_user: UserSchema = Depends(get_current_user),
 ):
-    
+    new_rambling = Rambling(
+        content=rambling_data.content,
+        tag=rambling_data.tag,
+        user_id=current_user.id
+    )
     db.add(new_rambling)
     db.commit()
     db.refresh(new_rambling)

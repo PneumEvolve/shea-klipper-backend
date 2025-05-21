@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from utils.email import send_email
+from schemas import UserResponse
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -133,7 +134,7 @@ def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Sessio
 @router.get("/user")
 def get_current_user_route(current_user: dict = Depends(get_current_user_dependency)):
     """Fetch the currently authenticated user."""
-    return {"id": current_user["id"], "email": current_user["email"]}
+    return UserResponse(id=user.id, email=user.email)
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
