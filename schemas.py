@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import List
+from typing import List, Optional
 
 # User Schema
 class UserCreate(BaseModel):
@@ -29,3 +29,13 @@ class FoodInventoryUpdateSchema(BaseModel):
 
 class RecipeSelection(BaseModel):
     recipe_ids: List[int]
+
+class RamblingCreate(BaseModel):
+    content: str
+    tag: Optional[str] = None
+
+class RamblingOut(RamblingCreate):
+    id: int
+
+    class Config:
+        orm_mode = True

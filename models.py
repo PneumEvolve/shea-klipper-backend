@@ -119,3 +119,9 @@ class Payment(Base):
     tokens_purchased = Column(Integer)
 
     user = relationship("User", back_populates="payments")
+
+class Rambling(Base):
+    __tablename__ = "ramblings"
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(String, nullable=False)
+    tag = Column(String, nullable=True)
