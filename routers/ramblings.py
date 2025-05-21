@@ -4,7 +4,7 @@ from database import get_db
 from models import Rambling
 from schemas import RamblingCreate, RamblingOut, User
 from typing import List
-from auth import get_current_user
+from .auth import get_current_user
 from schemas import User as UserSchema
 
 router = APIRouter()
