@@ -40,3 +40,24 @@ def delete_rambling(rambling_id: int, db: Session = Depends(get_db)):
     db.delete(idea)
     db.commit()
     return {"ok": True}
+
+@router.put("/ramblings/{rambling_id}")
+def update_rambling(
+    rambling_id: int,
+    rambling_data: RamblingCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rambling = db.query(Rambling).filter(Rambling.id == rambling_id).first()
+
+    if not rambling:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    if rambling.user_id != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to update this idea")
+
+    rambling.content = rambling_data.content
+    rambling.tag = rambling_data.tag
+    db.commit()
+    db.refresh(rambling)
+    return rambling
