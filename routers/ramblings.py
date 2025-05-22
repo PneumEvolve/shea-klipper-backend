@@ -53,7 +53,7 @@ def update_rambling(
     if not rambling:
         raise HTTPException(status_code=404, detail="Idea not found")
 
-    if rambling.user_id != current_user["id"]:
+    if rambling.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to update this idea")
 
     rambling.content = rambling_data.content
