@@ -25,7 +25,7 @@ def add_or_update_recipe(
         ingredients = ",".join(ingredients)
     
     if recipe_id:
-        recipe = db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == current_user["id"]).first()
+        recipe = db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == current_user.id).first()
         if not recipe:
             raise HTTPException(status_code=404, detail="Recipe not found.")
         
@@ -35,7 +35,7 @@ def add_or_update_recipe(
         recipe.category = recipe_data.get("category")
     else:
         recipe = Recipe(
-            user_id=current_user["id"],
+            user_id=current_user.id,
             name=recipe_data["name"],
             ingredients=ingredients,
             instructions=recipe_data["instructions"],
@@ -60,7 +60,7 @@ def get_recipes(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user_dependency)
 ):
-    query = db.query(Recipe).filter(Recipe.user_id == current_user["id"])
+    query = db.query(Recipe).filter(Recipe.user_id == current_user.id)
 
     if category and category.lower() != "all":
         query = query.filter(Recipe.category == category)
@@ -148,7 +148,7 @@ def import_recipe_from_url(
 def update_food_inventory(food_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     try:
         # Fetch existing inventory
-        existing_inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).all()
+        existing_inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user.id).all()
 
         # Convert existing items to a dictionary for easy lookup
         inventory_dict = {item.name: item for item in existing_inventory}
@@ -162,7 +162,7 @@ def update_food_inventory(food_data: dict, db: Session = Depends(get_db), curren
             else:
                 # Add new item
                 new_inventory = FoodInventory(
-                    user_id=current_user["id"],
+                    user_id=current_user.id,
                     name=item["name"],
                     quantity=item["quantity"],
                     desired_quantity=item["desiredQuantity"],
@@ -180,7 +180,7 @@ def update_food_inventory(food_data: dict, db: Session = Depends(get_db), curren
 ### 🔍 Get User’s Food Inventory
 @router.get("/food-inventory")
 def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).all()
+    inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user.id).all()
 
     if not inventory:
         return {"items": []}
@@ -228,11 +228,11 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
                     SELECT 1 FROM user_categories
                     WHERE user_id = :user_id AND category_id = :category_id
                 """),
-                {"user_id": current_user["id"], "category_id": category_id}
+                {"user_id=current_user.id, "category_id": category_id}
             ).first()
 
             if not exists:
-                db.execute(user_categories.insert().values(user_id=current_user["id"], category_id=category_id))
+                db.execute(user_categories.insert().values(user_id=current_user.id, category_id=category_id))
                 db.commit()
 
         return {"message": "Categories updated successfully.", "added_categories": added_categories}
@@ -248,7 +248,7 @@ def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depe
         categories = (
             db.query(Category)
             .join(user_categories, user_categories.c.category_id == Category.id)
-            .filter(user_categories.c.user_id == current_user["id"])
+            .filter(user_categories.c.user_id == current_user.id)
             .all()
         )
 
@@ -261,7 +261,7 @@ def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depe
     
 @router.delete("/recipes/{recipe_id}")
 def delete_recipe(recipe_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    recipe = db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == current_user["id"]).first()
+    recipe = db.query(Recipe).filter(Recipe.id == recipe_id, Recipe.user_id == current_user.id).first()
     
     if not recipe:
         raise HTTPException(status_code=404, detail="Recipe not found.")
@@ -272,7 +272,7 @@ def delete_recipe(recipe_id: int, db: Session = Depends(get_db), current_user: d
 
 @router.delete("/food-inventory/{item_id}")
 def delete_food_inventory(item_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    item = db.query(FoodInventory).filter(FoodInventory.id == item_id, FoodInventory.user_id == current_user["id"]).first()
+    item = db.query(FoodInventory).filter(FoodInventory.id == item_id, FoodInventory.user_id == current_user.id).first()
     
     if not item:
         raise HTTPException(status_code=404, detail="Food inventory item not found.")
@@ -307,11 +307,11 @@ def generate_grocery_list_from_recipes(
 
     recipes = db.query(Recipe).filter(
         Recipe.id.in_(recipe_ids),
-        Recipe.user_id == current_user["id"]
+        Recipe.user_id == current_user.id
     ).all()
 
     grocery_list = GroceryList(
-        user_id=current_user["id"],
+        user_id=current_user.id,
         name=payload.get("name", "New Grocery List")
     )
     db.add(grocery_list)
@@ -341,13 +341,13 @@ def generate_grocery_list_from_recipes(
     }
 @router.get("/grocery-lists")
 def get_grocery_lists(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    lists = db.query(GroceryList).filter(GroceryList.user_id == current_user["id"]).all()
+    lists = db.query(GroceryList).filter(GroceryList.user_id == current_user.id).all()
     return [{"id": gl.id, "name": gl.name, "completed": gl.completed} for gl in lists]
 
 
 @router.get("/grocery-lists/{list_id}/items")
 def get_grocery_list_items(list_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    grocery_list = db.query(GroceryList).filter_by(id=list_id, user_id=current_user["id"]).first()
+    grocery_list = db.query(GroceryList).filter_by(id=list_id, user_id=current_user.id).first()
     if not grocery_list:
         raise HTTPException(status_code=404, detail="Grocery list not found")
 
@@ -370,7 +370,7 @@ def update_grocery_item(
 ):
     item = db.query(GroceryItem).join(GroceryList).filter(
         GroceryItem.id == item_id,
-        GroceryList.user_id == current_user["id"]
+        GroceryList.user_id == current_user.id
     ).first()
 
     if not item:
@@ -391,21 +391,21 @@ def import_checked_items_to_inventory(
 ):
     items = db.query(GroceryItem).join(GroceryList).filter(
         GroceryItem.grocery_list_id == list_id,
-        GroceryList.user_id == current_user["id"],
+        GroceryList.user_id == current_user.id,
         GroceryItem.checked == True
     ).all()
 
     for item in items:
         existing = db.query(FoodInventory).filter_by(
             name=item.name,
-            user_id=current_user["id"]
+            user_id=current_user.id
         ).first()
 
         if existing:
             existing.quantity += item.quantity
         else:
             new_food = FoodInventory(
-                user_id=current_user["id"],
+                user_id=current_user.id,
                 name=item.name,
                 quantity=item.quantity,
                 desired_quantity=item.quantity,
