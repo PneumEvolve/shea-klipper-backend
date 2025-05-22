@@ -20,7 +20,6 @@ def get_or_create_grocery_list(
     if not grocery_list:
         grocery_list = GroceryList(
             user_id=current_user.id,
-            name="My Grocery List",
             created_at=datetime.utcnow()
         )
         db.add(grocery_list)
@@ -30,7 +29,6 @@ def get_or_create_grocery_list(
     items = db.query(GroceryItem).filter(GroceryItem.grocery_list_id == grocery_list.id).all()
     return {
         "id": grocery_list.id,
-        "name": grocery_list.name,
         "items": [
             {"id": item.id, "name": item.name, "quantity": item.quantity, "checked": item.checked}
             for item in items
