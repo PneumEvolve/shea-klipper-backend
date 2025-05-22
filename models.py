@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from database import Base  # Import Base model from database.py
+from database import Base
 
 # ✅ Many-to-Many Relationship Between Users and Categories
 user_categories = Table(
@@ -26,8 +26,8 @@ class User(Base):
     recipes = relationship("Recipe", back_populates="user", cascade="all, delete-orphan")
     food_inventory = relationship("FoodInventory", back_populates="user", cascade="all, delete-orphan")
     ramblings = relationship("Rambling", back_populates="user", cascade="all, delete-orphan")
+    grocery_lists = relationship("GroceryList", back_populates="user", cascade="all, delete-orphan")
 
-    # ✅ Many-to-Many relationship with categories (via user_categories table)
     categories = relationship("Category", secondary=user_categories, back_populates="users")
 
 class Transcription(Base):
@@ -37,7 +37,7 @@ class Transcription(Base):
     filename = Column(String, nullable=False)
     transcription_text = Column(Text, nullable=True)
     summary_text = Column(Text, nullable=True)
-    uploaded_at = Column(DateTime, default=datetime.utcnow)  # ✅ Store the upload time
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="transcriptions")
@@ -63,7 +63,7 @@ class FoodInventory(Base):
     name = Column(String, nullable=False)
     quantity = Column(Integer, nullable=False, default=0)
     desired_quantity = Column(Integer, nullable=False, default=0)
-    categories = Column(Text, nullable=True)  # Storing category IDs as comma-separated values
+    categories = Column(Text, nullable=True)
 
     user = relationship("User", back_populates="food_inventory")
 
@@ -72,30 +72,30 @@ class Category(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False)
-    type = Column(String, nullable=False, default="food")  # 🔥 NEW: 'food' or 'recipe'
+    type = Column(String, nullable=False, default="food")
 
-    # ✅ Many-to-Many relationship with users (via user_categories table)
     users = relationship("User", secondary=user_categories, back_populates="categories")
 
 class GroceryList(Base):
     __tablename__ = "grocery_lists"
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    items = relationship("GroceryItem", back_populates="list", cascade="all, delete-orphan")
-
+    user = relationship("User", back_populates="grocery_lists")
+    items = relationship("GroceryItem", back_populates="grocery_list", cascade="all, delete-orphan")
 
 class GroceryItem(Base):
     __tablename__ = "grocery_items"
-    id = Column(Integer, primary_key=True, index=True)
-    list_id = Column(Integer, ForeignKey("grocery_lists.id"), nullable=False)
-    name = Column(String, nullable=False)
-    quantity = Column(String, nullable=True)
-    have = Column(Boolean, default=False)  # ✅ whether the item is already in your inventory
-    note = Column(String, nullable=True)
 
-    list = relationship("GroceryList", back_populates="items")
+    id = Column(Integer, primary_key=True, index=True)
+    grocery_list_id = Column(Integer, ForeignKey("grocery_lists.id"), nullable=False)
+    name = Column(String, nullable=False)
+    quantity = Column(Integer, nullable=True)
+    checked = Column(Boolean, default=False)
+
+    grocery_list = relationship("GroceryList", back_populates="items")
 
 class TranscriptionUsage(Base):
     __tablename__ = "transcription_usage"
@@ -123,9 +123,10 @@ class Payment(Base):
 
 class Rambling(Base):
     __tablename__ = "ramblings"
+
     id = Column(Integer, primary_key=True, index=True)
     content = Column(String, nullable=False)
     tag = Column(String, nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id"))  # ✅ Connect to user
+    user_id = Column(Integer, ForeignKey("users.id"))
 
     user = relationship("User", back_populates="ramblings")
