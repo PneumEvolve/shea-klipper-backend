@@ -90,6 +90,35 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
+    # 🟡 Auto-create default categories for this new user
+    default_categories = {
+    "food": ["Pantry", "Fridge", "Freezer"],
+    "recipe": ["Breakfast", "Lunch", "Dinner"]
+    }
+
+    for category_type, names in default_categories.items():
+        for name in names:
+            # Check if the category exists globally
+            category = db.query(Category).filter_by(name=name, type=category_type).first()
+            if not category:
+                category = Category(name=name, type=category_type)
+                db.add(category)
+                db.commit()
+                db.refresh(category)
+
+            # Link to user if not already linked
+            exists = db.execute(
+                text("""
+                    SELECT 1 FROM user_categories
+                    WHERE user_id = :user_id AND category_id = :category_id
+                """),
+                {"user_id": new_user.id, "category_id": category.id}
+            ).first()
+
+            if not exists:
+                db.execute(user_categories.insert().values(user_id=new_user.id, category_id=category.id))
+                db.commit()
+
     return UserResponse(id=new_user.id, email=new_user.email)
 
 # ✅ LOGIN Endpoint

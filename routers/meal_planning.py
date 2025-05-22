@@ -206,30 +206,41 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
             raise HTTPException(status_code=400, detail="Invalid request format. Expected 'categories': [list]")
 
         category_type = category_data.get("type", "food")  # default to "food" if missing
-
         added_categories = []
+
         for category_name in category_data["categories"]:
             existing_category = db.query(Category).filter(Category.name == category_name).first()
+
             if not existing_category:
                 new_category = Category(name=category_name, type=category_type)
                 db.add(new_category)
                 db.commit()
                 db.refresh(new_category)
+                category_id = new_category.id
                 added_categories.append(new_category.name)
             else:
+                category_id = existing_category.id
                 added_categories.append(existing_category.name)
 
-            # Associate user with category
-            category_id = new_category.id if not existing_category else existing_category.id
-            db.execute(user_categories.insert().values(user_id=current_user["id"], category_id=category_id))
-            db.commit()
+            # ✅ Check if user-category link already exists
+            exists = db.execute(
+                text("""
+                    SELECT 1 FROM user_categories
+                    WHERE user_id = :user_id AND category_id = :category_id
+                """),
+                {"user_id": current_user["id"], "category_id": category_id}
+            ).first()
+
+            if not exists:
+                db.execute(user_categories.insert().values(user_id=current_user["id"], category_id=category_id))
+                db.commit()
 
         return {"message": "Categories updated successfully.", "added_categories": added_categories}
 
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-
+    
 ### 📁 Get All Categories for a User
 @router.get("/categories", response_model=dict)
 def get_user_categories(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
