@@ -224,12 +224,12 @@ def add_category(category_data: dict, db: Session = Depends(get_db), current_use
 
             # ✅ Check if user-category link already exists
             exists = db.execute(
-                text("""
-                    SELECT 1 FROM user_categories
-                    WHERE user_id = :user_id AND category_id = :category_id
-                """),
-                {"user_id=current_user.id, "category_id": category_id}
-            ).first()
+    text("""
+        SELECT 1 FROM user_categories
+        WHERE user_id = :user_id AND category_id = :category_id
+    """),
+    {"user_id": current_user.id, "category_id": category_id}
+).first()
 
             if not exists:
                 db.execute(user_categories.insert().values(user_id=current_user.id, category_id=category_id))
