@@ -162,3 +162,34 @@ def generate_grocery_list_from_inventory(
 
     db.commit()
     return {"message": "Grocery list created", "items": shortfalls}
+
+@router.post("/grocery-items")
+def add_grocery_item(
+    item_data: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    # Get the latest grocery list
+    grocery_list = db.query(GroceryList).filter(
+        GroceryList.user_id == current_user.id
+    ).order_by(GroceryList.created_at.desc()).first()
+
+    if not grocery_list:
+        raise HTTPException(status_code=400, detail="No grocery list found")
+
+    new_item = GroceryItem(
+        grocery_list_id=grocery_list.id,
+        name=item_data["name"],
+        quantity=item_data["quantity"],
+        checked=False
+    )
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+
+    return {
+        "id": new_item.id,
+        "name": new_item.name,
+        "quantity": new_item.quantity,
+        "checked": new_item.checked
+    }
