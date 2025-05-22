@@ -415,3 +415,34 @@ def import_checked_items_to_inventory(
 
     db.commit()
     return {"message": f"{len(items)} items added to inventory"}
+
+@router.post("/meal-planning/grocery-lists/from-inventory")
+def generate_from_inventory(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user["id"]).all()
+    shortfalls = []
+
+    for item in inventory:
+        needed = item.desired_quantity - item.quantity
+        if needed > 0:
+            shortfalls.append({"name": item.name, "quantity": needed})
+
+    if not shortfalls:
+        raise HTTPException(status_code=400, detail="No shortfalls found in inventory.")
+
+    grocery_list = GroceryList(user_id=current_user["id"], created_at=datetime.utcnow())
+    db.add(grocery_list)
+    db.flush()
+
+    for item in shortfalls:
+        grocery_item = GroceryItem(
+            grocery_list_id=grocery_list.id,
+            name=item["name"],
+            quantity=item["quantity"]
+        )
+        db.add(grocery_item)
+
+    db.commit()
+    return {"message": "Grocery list created", "items": shortfalls}
