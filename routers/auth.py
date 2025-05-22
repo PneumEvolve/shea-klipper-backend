@@ -90,7 +90,7 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
-    return UserResponse(id=user.id, email=user.email)
+    return UserResponse(id=new_user.id, email=new_user.email)
 
 # ✅ LOGIN Endpoint
 @router.post("/login")
@@ -122,7 +122,7 @@ def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Sessio
         if not user:
             print("🔴 Invalid authentication: User not found")
             raise HTTPException(status_code=401, detail="Invalid authentication")
-        return {"id": user.id, "email": user.email}
+        return UserResponse(id=user.id, email=user.email)
     except jwt.ExpiredSignatureError:
         print("🔴 Token expired")
         raise HTTPException(status_code=401, detail="Token expired")
@@ -134,7 +134,7 @@ def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Sessio
 @router.get("/user")
 def get_current_user_route(current_user: dict = Depends(get_current_user_dependency)):
     """Fetch the currently authenticated user."""
-    return UserResponse(id=user.id, email=user.email)
+    return current_user
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
