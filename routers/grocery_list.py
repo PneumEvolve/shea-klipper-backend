@@ -191,7 +191,7 @@ def add_shortfalls_to_grocery_list(
     # Add items to list
     for item in shortfalls:
         grocery_item = GroceryItem(
-            list_id=grocery_list.id,
+            grocery_list_id=grocery_list.id,
             name=item["name"],
             quantity=item["quantity"]
         )
