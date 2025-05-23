@@ -147,3 +147,59 @@ def import_checked_items_to_inventory(
 
     db.commit()
     return {"message": f"{added_count} items imported and removed from grocery list"}
+
+@router.post("/grocery-list/from-inventory")
+def add_shortfalls_to_grocery_list(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    # Fetch user inventory
+    inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user.id).all()
+
+    if not inventory:
+        raise HTTPException(status_code=404, detail="No inventory found.")
+
+    # Calculate what needs to be added to the list
+    shortfalls = [
+        {
+            "name": item.name,
+            "quantity": item.desired_quantity - item.quantity
+        }
+        for item in inventory
+        if item.quantity < item.desired_quantity
+    ]
+
+    if not shortfalls:
+        return {"message": "All inventory items are fully stocked."}
+
+    # Get or create grocery list
+    grocery_list = (
+        db.query(GroceryList)
+        .filter(GroceryList.user_id == current_user.id)
+        .order_by(GroceryList.created_at.desc())
+        .first()
+    )
+
+    if not grocery_list:
+        grocery_list = GroceryList(
+            user_id=current_user.id,
+            created_at=datetime.utcnow()
+        )
+        db.add(grocery_list)
+        db.flush()
+
+    # Add items to list
+    for item in shortfalls:
+        grocery_item = GroceryItem(
+            list_id=grocery_list.id,
+            name=item["name"],
+            quantity=item["quantity"]
+        )
+        db.add(grocery_item)
+
+    db.commit()
+
+    return {
+        "message": f"{len(shortfalls)} shortfall item(s) added to grocery list.",
+        "items_added": shortfalls
+    }
