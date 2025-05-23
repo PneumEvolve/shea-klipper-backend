@@ -27,7 +27,7 @@ class User(Base):
     food_inventory = relationship("FoodInventory", back_populates="user", cascade="all, delete-orphan")
     ramblings = relationship("Rambling", back_populates="user", cascade="all, delete-orphan")
     grocery_lists = relationship("GroceryList", back_populates="user", cascade="all, delete-orphan")
-
+    journal_entries = relationship("journal_entries", back_populates="user", cascade="all, delete-orphan")
     categories = relationship("Category", secondary=user_categories, back_populates="users")
 
 class Transcription(Base):
@@ -130,3 +130,13 @@ class Rambling(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
 
     user = relationship("User", back_populates="ramblings")
+
+class JournalEntry(Base):
+    __tablename__ = "journal_entries"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")

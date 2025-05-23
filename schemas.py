@@ -48,3 +48,11 @@ class User(BaseModel):
 
     class Config:
         from_attributes = True  # or orm_mode = True if you're using Pydantic v1
+
+class JournalEntryCreate(BaseModel):
+    title: str
+    content: str
+
+class JournalEntryOut(JournalEntryCreate):
+    id: int
+    created_at: datetime
