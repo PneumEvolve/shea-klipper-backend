@@ -27,7 +27,7 @@ class User(Base):
     food_inventory = relationship("FoodInventory", back_populates="user", cascade="all, delete-orphan")
     ramblings = relationship("Rambling", back_populates="user", cascade="all, delete-orphan")
     grocery_lists = relationship("GroceryList", back_populates="user", cascade="all, delete-orphan")
-    journal_entries = relationship("journal_entries", back_populates="user", cascade="all, delete-orphan")
+    journal_entries = relationship("JournalEntry", back_populates="user", cascade="all, delete-orphan")
     categories = relationship("Category", secondary=user_categories, back_populates="users")
 
 class Transcription(Base):
@@ -139,4 +139,4 @@ class JournalEntry(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    user = relationship("User")
+    user = relationship("User", back_populates="journal_entries")
