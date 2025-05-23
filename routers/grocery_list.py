@@ -203,3 +203,39 @@ def add_shortfalls_to_grocery_list(
         "message": f"{len(shortfalls)} shortfall item(s) added to grocery list.",
         "items_added": shortfalls
     }
+
+@router.post("/from-recipes")
+def add_ingredients_from_recipes(recipe_ids: list[int], db: Session = Depends(get_db), current_user: User = Depends(get_current_user_dependency)):
+    try:
+        # Find or create user's grocery list
+        grocery_list = db.query(GroceryList).filter_by(user_id=current_user.id).first()
+        if not grocery_list:
+            grocery_list = GroceryList(user_id=current_user.id, created_at=datetime.utcnow())
+            db.add(grocery_list)
+            db.commit()
+            db.refresh(grocery_list)
+
+        added_items = []
+
+        for recipe_id in recipe_ids:
+            recipe = db.query(Recipe).filter_by(id=recipe_id, user_id=current_user.id).first()
+            if not recipe:
+                continue
+
+            ingredients = [i.strip() for i in recipe.ingredients.split(",") if i.strip()]
+            for ingredient in ingredients:
+                grocery_item = GroceryItem(
+                    grocery_list_id=grocery_list.id,
+                    name=ingredient,
+                    quantity=1,
+                    checked=False
+                )
+                db.add(grocery_item)
+                added_items.append(ingredient)
+
+        db.commit()
+        return {"message": f"✅ Added ingredients from {len(recipe_ids)} recipe(s) to grocery list.", "added": added_items}
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to import ingredients from recipes: {str(e)}")
