@@ -102,3 +102,48 @@ def delete_item(
     db.delete(item)
     db.commit()
     return {"message": "Item deleted"}
+
+@router.post("/grocery-list/import-to-inventory")
+def import_checked_items_to_inventory(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    grocery_list = db.query(GroceryList).filter(
+        GroceryList.user_id == current_user.id
+    ).order_by(GroceryList.created_at.desc()).first()
+
+    if not grocery_list:
+        raise HTTPException(status_code=404, detail="No grocery list found")
+
+    checked_items = db.query(GroceryItem).filter(
+        GroceryItem.grocery_list_id == grocery_list.id,
+        GroceryItem.checked == True
+    ).all()
+
+    if not checked_items:
+        return {"message": "No items marked as 'in cart'"}
+
+    added_count = 0
+    for item in checked_items:
+        # Add to inventory or update existing
+        existing = db.query(FoodInventory).filter_by(
+            user_id=current_user.id,
+            name=item.name
+        ).first()
+
+        if existing:
+            existing.quantity += item.quantity or 1
+        else:
+            db.add(FoodInventory(
+                user_id=current_user.id,
+                name=item.name,
+                quantity=item.quantity or 1,
+                desired_quantity=item.quantity or 1,
+                categories=""
+            ))
+        # Delete item from grocery list
+        db.delete(item)
+        added_count += 1
+
+    db.commit()
+    return {"message": f"{added_count} items imported and removed from grocery list"}
