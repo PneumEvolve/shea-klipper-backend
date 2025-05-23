@@ -6,7 +6,7 @@ from datetime import datetime
 from database import get_db
 from models import JournalEntry
 from schemas import JournalEntryCreate, JournalEntryOut
-from auth import get_current_user_dependency
+from routers.auth import get_current_user_dependency
 
 router = APIRouter()
 
