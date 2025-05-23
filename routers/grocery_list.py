@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
-from models import GroceryList, GroceryItem, FoodInventory
+from models import GroceryList, GroceryItem, FoodInventory, Recipe, User
 from database import get_db
 from routers.auth import get_current_user_dependency
 
