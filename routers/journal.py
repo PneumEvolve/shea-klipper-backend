@@ -35,6 +35,14 @@ def delete_entry(entry_id: int = Path(..., gt=0), db: Session = Depends(get_db),
     db.commit()
     return {"message": "Journal entry deleted."}
 
+def generate_insight(prompt: str) -> str:
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7
+    )
+    return response.choices[0].message.content.strip()
+
 @router.post("/journal/reflect/{entry_id}")
 def reflect_on_entry(entry_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id).first()
@@ -49,14 +57,48 @@ def reflect_on_entry(entry_id: int, db: Session = Depends(get_db), current_user:
     )
 
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
-        )
-        reflection = response.choices[0].message.content.strip()
-        entry.reflection = reflection  # ✅ Save to DB
+        entry.reflection = generate_insight(prompt)
         db.commit()
-        return {"reflection": reflection}
+        return {"reflection": entry.reflection}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI reflection failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Reflection generation failed: {str(e)}")
+
+@router.post("/journal/mantra/{entry_id}")
+def generate_mantra(entry_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+
+    prompt = (
+        f"The user journaled the following:\n\n"
+        f"Title: {entry.title}\n"
+        f"Content: {entry.content}\n\n"
+        f"Create a very brief one sentence long empowering mantra based on the journal entry to help the user stay aligned and strong."
+    )
+
+    try:
+        entry.mantra = generate_insight(prompt)
+        db.commit()
+        return {"mantra": entry.mantra}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Mantra generation failed: {str(e)}")
+
+@router.post("/journal/next-action/{entry_id}")
+def generate_next_action(entry_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+
+    prompt = (
+        f"The user journaled this:\n\n"
+        f"Title: {entry.title}\n"
+        f"Content: {entry.content}\n\n"
+        f"Based on this, what is a small, realistic next action the user can take to improve their situation?"
+    )
+
+    try:
+        entry.next_action = generate_insight(prompt)
+        db.commit()
+        return {"next_action": entry.next_action}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Next action generation failed: {str(e)}")

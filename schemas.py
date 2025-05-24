@@ -58,6 +58,8 @@ class JournalEntryOut(JournalEntryCreate):
     id: int
     created_at: datetime
     reflection: Optional[str] = None
+    mantra: Optional[str] = None
+    next_action: Optional[str] = None
 
     class Config:
         orm_mode = True

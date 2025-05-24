@@ -139,5 +139,7 @@ class JournalEntry(Base):
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     reflection = Column(Text, nullable=True)
+    mantra = Column(Text, nullable=True)
+    next_action = Column(Text, nullable=True)
 
     user = relationship("User", back_populates="journal_entries")
