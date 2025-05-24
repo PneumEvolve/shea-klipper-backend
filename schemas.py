@@ -57,3 +57,7 @@ class JournalEntryCreate(BaseModel):
 class JournalEntryOut(JournalEntryCreate):
     id: int
     created_at: datetime
+    reflection: Optional[str] = None
+
+    class Config:
+        orm_mode = True
