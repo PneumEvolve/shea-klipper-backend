@@ -45,7 +45,7 @@ def reflect_on_entry(entry_id: int, db: Session = Depends(get_db), current_user:
         f"The user wrote the following journal entry:\n\n"
         f"Title: {entry.title}\n"
         f"Content: {entry.content}\n\n"
-        f"Give a concise, thoughtful and compassionate reflection to help the user better understand their own thoughts."
+        f"Give a short, concise, thoughtful and compassionate reflection to help the user better understand their own thoughts."
     )
 
     try:
@@ -55,6 +55,8 @@ def reflect_on_entry(entry_id: int, db: Session = Depends(get_db), current_user:
             temperature=0.7
         )
         reflection = response.choices[0].message.content.strip()
+        entry.reflection = reflection  # ✅ Save to DB
+        db.commit()
         return {"reflection": reflection}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI reflection failed: {str(e)}")
