@@ -12,7 +12,7 @@ router = APIRouter()
 
 @router.post("/journal", response_model=JournalEntryOut)
 def create_entry(entry: JournalEntryCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    new_entry = JournalEntry(user_id=current_user["id"], **entry.dict())
+    new_entry = JournalEntry(user_id=current_user.id, **entry.dict())
     db.add(new_entry)
     db.commit()
     db.refresh(new_entry)
@@ -20,4 +20,4 @@ def create_entry(entry: JournalEntryCreate, db: Session = Depends(get_db), curre
 
 @router.get("/journal", response_model=List[JournalEntryOut])
 def get_entries(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
-    return db.query(JournalEntry).filter(JournalEntry.user_id == current_user["id"]).order_by(JournalEntry.created_at.desc()).all()
+    return db.query(JournalEntry).filter(JournalEntry.user_id == current_user.id).order_by(JournalEntry.created_at.desc()).all()
