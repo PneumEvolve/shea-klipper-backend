@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from models import Thread, Comment
 from schemas import ThreadCreate, CommentCreate, ThreadOut
 from database import get_db
-from typing import Optional
+from typing import Optional, List
 
 router = APIRouter()
 
