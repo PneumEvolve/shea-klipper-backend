@@ -18,11 +18,11 @@ def get_optional_user(request: Request) -> Optional[dict]:
 
 @router.post("/threads", response_model=ThreadOut)
 def create_thread(thread: ThreadCreate, db: Session = Depends(get_db), user: Optional[dict] = Depends(get_optional_user)):
-    new_thread = Thread(text=thread.text)
+    new_thread = Thread(text=thread.text, user_id=user["id"] if user else None)
     db.add(new_thread)
     db.commit()
     db.refresh(new_thread)
-    return new_thread = Thread(text=thread.text, user_id=user["id"])
+    return new_thread
 
 @router.get("/threads", response_model=List[ThreadOut])
 def get_threads(db: Session = Depends(get_db)):
@@ -33,11 +33,10 @@ def add_comment(comment: CommentCreate, db: Session = Depends(get_db), user: Opt
     thread = db.query(Thread).filter(Thread.id == comment.thread_id).first()
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    new_comment = Comment(thread_id=comment.thread_id, text=comment.text)
-    db.add(new_comment)
+    new_comment  = Comment(thread_id=comment.thread_id, text=comment.text, user_id=user["id"])
     db.commit()
     db.refresh(thread)
-    return new_comment = Comment(thread_id=comment.thread_id, text=comment.text, user_id=user["id"])
+    return new_comment
 
 @router.get("/comments/{comment_id}", response_model=CommentOut)
 def get_comment(comment_id: int, db: Session = Depends(get_db)):
