@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from models import Thread, Comment
-from schemas import ThreadCreate, CommentCreate, ThreadOut
+from schemas import ThreadCreate, CommentCreate, ThreadOut, CommentOut
 from database import get_db
 from typing import Optional, List
 
@@ -45,3 +45,8 @@ def get_comment(comment_id: int, db: Session = Depends(get_db)):
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
     return comment
+
+@router.get("/comments/{thread_id}", response_model=List[CommentOut])
+def get_comments_for_thread(thread_id: int, db: Session = Depends(get_db)):
+    comments = db.query(Comment).filter(Comment.thread_id == thread_id).all()
+    return comments
