@@ -37,7 +37,7 @@ def add_comment(comment: CommentCreate, db: Session = Depends(get_db), user: Opt
     db.add(new_comment)
     db.commit()
     db.refresh(thread)
-    return thread
+    return new_comment
 
 @router.get("/comments/{comment_id}", response_model=CommentOut)
 def get_comment(comment_id: int, db: Session = Depends(get_db)):
