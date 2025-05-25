@@ -62,7 +62,7 @@ class JournalEntryOut(JournalEntryCreate):
     next_action: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CommentOut(BaseModel):
     id: int
@@ -70,7 +70,7 @@ class CommentOut(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ThreadOut(BaseModel):
     id: int

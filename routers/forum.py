@@ -38,3 +38,10 @@ def add_comment(comment: CommentCreate, db: Session = Depends(get_db), user: Opt
     db.commit()
     db.refresh(thread)
     return thread
+
+@router.get("/comments/{comment_id}", response_model=CommentOut)
+def get_comment(comment_id: int, db: Session = Depends(get_db)):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    return comment
