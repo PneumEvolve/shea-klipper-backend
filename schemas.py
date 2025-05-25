@@ -79,7 +79,7 @@ class ThreadOut(BaseModel):
     comments: List[CommentOut] = []
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ThreadCreate(BaseModel):
     text: str
