@@ -29,6 +29,9 @@ class User(Base):
     grocery_lists = relationship("GroceryList", back_populates="user", cascade="all, delete-orphan")
     journal_entries = relationship("JournalEntry", back_populates="user", cascade="all, delete-orphan")
     categories = relationship("Category", secondary=user_categories, back_populates="users")
+    threads = relationship("Thread", back_populates="user", cascade="all, delete-orphan")
+    comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
+
 
 class Transcription(Base):
     __tablename__ = "transcriptions"
@@ -143,3 +146,24 @@ class JournalEntry(Base):
     next_action = Column(Text, nullable=True)
 
     user = relationship("User", back_populates="journal_entries")
+
+class Thread(Base):
+    __tablename__ = "threads"
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 👈 Nullable for anonymous
+    user = relationship("User", back_populates="threads", lazy="joined")
+    comments = relationship("Comment", back_populates="thread", cascade="all, delete")
+
+class Comment(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    thread_id = Column(Integer, ForeignKey("threads.id"))
+    thread = relationship("Thread", back_populates="comments")
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 👈 Optional
+    user = relationship("User", back_populates="comments", lazy="joined")

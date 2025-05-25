@@ -63,3 +63,27 @@ class JournalEntryOut(JournalEntryCreate):
 
     class Config:
         orm_mode = True
+
+class CommentOut(BaseModel):
+    id: int
+    text: str
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class ThreadOut(BaseModel):
+    id: int
+    text: str
+    created_at: datetime
+    comments: List[CommentOut] = []
+
+    class Config:
+        orm_mode = True
+
+class ThreadCreate(BaseModel):
+    text: str
+
+class CommentCreate(BaseModel):
+    thread_id: int
+    text: str
