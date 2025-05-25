@@ -4,6 +4,7 @@ from models import Thread, Comment
 from schemas import ThreadCreate, CommentCreate, ThreadOut, CommentOut
 from database import get_db
 from typing import Optional, List
+from auth import get_current_user_dependency
 
 router = APIRouter()
 
