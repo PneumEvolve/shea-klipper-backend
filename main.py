@@ -8,7 +8,9 @@ app = FastAPI()
 # CORS Setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://sheas-app.netlify.app", "https://pneumevolve.com/" /],  # Adjust this in production
+    allow_origins=["http://localhost:5173",
+                   "https://sheas-app.netlify.app", 
+                   "https://pneumevolve.com/" ],  # Adjust this in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
