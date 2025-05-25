@@ -46,7 +46,7 @@ def get_comment(comment_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Comment not found")
     return comment
 
-@router.get("/comments/{thread_id}", response_model=List[CommentOut])
+@router.get("/threads/{thread_id}/comments", response_model=List[CommentOut])
 def get_comments_for_thread(thread_id: int, db: Session = Depends(get_db)):
     comments = db.query(Comment).filter(Comment.thread_id == thread_id).all()
     return comments
