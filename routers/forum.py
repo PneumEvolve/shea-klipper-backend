@@ -4,17 +4,15 @@ from models import Thread, Comment
 from schemas import ThreadCreate, CommentCreate, ThreadOut, CommentOut
 from database import get_db
 from typing import Optional, List
-from routers.auth import get_current_user_dependency
+from routers.auth import decode_token_raw, get_current_user_dependency
 
 router = APIRouter()
 
-def get_optional_user(request: Request) -> Optional[dict]:
+def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Optional[UserResponse]:
     token = request.headers.get("Authorization")
-    if token:
-        try:
-            return get_current_user_dependency(token)
-        except Exception:
-            return None
+    if token and token.startswith("Bearer "):
+        token = token.replace("Bearer ", "")
+        return decode_token_raw(token, db)
     return None
 
 @router.post("/threads", response_model=ThreadOut)

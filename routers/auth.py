@@ -207,3 +207,13 @@ def reset_password(payload: PasswordResetPayload, db: Session = Depends(get_db))
     db.commit()
 
     return {"message": "Password has been reset successfully"}
+
+def decode_token_raw(token: str, db: Session) -> Optional[UserResponse]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user = db.query(User).filter(User.id == payload.get("id")).first()
+        if not user:
+            return None
+        return UserResponse(id=user.id, email=user.email)
+    except:
+        return None
