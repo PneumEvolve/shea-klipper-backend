@@ -19,7 +19,7 @@ def get_optional_user(request: Request, db: Session = Depends(get_db)) -> Option
 def create_thread(
     thread: ThreadCreate,
     db: Session = Depends(get_db),
-    user: Optional[dict] = Depends(get_optional_user)
+    user: dict = Depends(get_current_user_dependency)
 ):
     new_thread = Thread(text=thread.text, user_id=user.id if user else None)
     db.add(new_thread)
