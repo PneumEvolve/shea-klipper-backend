@@ -67,6 +67,7 @@ class JournalEntryOut(JournalEntryCreate):
 class CommentOut(BaseModel):
     id: int
     text: str
+    user_id: Optional[int]
     created_at: datetime
 
     class Config:
@@ -75,6 +76,7 @@ class CommentOut(BaseModel):
 class ThreadOut(BaseModel):
     id: int
     text: str
+    user_id: Optional[int]
     created_at: datetime
     comments: List[CommentOut] = []
 
