@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Optional
 from utils.email import send_email
 from schemas import UserResponse
+from models import Category, user_categories
+from sqlalchemy import text
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -21,7 +23,7 @@ load_dotenv(dotenv_path=env_path)
 print("RECAPTCHA_SECRET:", os.getenv("RECAPTCHA_SECRET"))
 
 RECAPTCHA_SECRET = os.getenv("RECAPTCHA_SECRET")  # 🔒 Load from .env
-SECRET_KEY = "your_secret_key"
+SECRET_KEY = os.getenv("SECRET_KEY", "fallback-secret")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 

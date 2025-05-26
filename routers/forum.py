@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from models import Thread, Comment
-from schemas import ThreadCreate, CommentCreate, ThreadOut, CommentOut
+from schemas import ThreadCreate, CommentCreate, ThreadOut, CommentOut, UserResponse
 from database import get_db
 from typing import Optional, List
 from routers.auth import decode_token_raw, get_current_user_dependency
