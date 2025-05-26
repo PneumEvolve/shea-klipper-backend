@@ -162,9 +162,8 @@ def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Sessio
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # ✅ GET CURRENT USER Endpoint
-@router.get("/user")
-def get_current_user_route(current_user: dict = Depends(get_current_user_dependency)):
-    """Fetch the currently authenticated user."""
+@router.get("/user", response_model=UserResponse)
+def get_current_user_route(current_user: UserResponse = Depends(get_current_user_dependency)):
     return current_user
 
 class PasswordResetRequest(BaseModel):
@@ -217,5 +216,6 @@ def decode_token_raw(token: str, db: Session) -> Optional[UserResponse]:
         if not user:
             return None
         return UserResponse(id=user.id, email=user.email)
-    except:
+    except Exception as e:
+        print("Token decode failed:", e)
         return None
