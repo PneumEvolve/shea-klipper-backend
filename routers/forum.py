@@ -21,7 +21,7 @@ def create_thread(
     db: Session = Depends(get_db),
     user: Optional[dict] = Depends(get_optional_user)
 ):
-    new_thread = Thread(text=thread.text, user_id=user["id"] if user else None)
+    new_thread = Thread(text=thread.text, user_id=user.id if user else None)
     db.add(new_thread)
     db.commit()
     db.refresh(new_thread)
@@ -47,7 +47,7 @@ def add_comment(
     new_comment = Comment(
         thread_id=comment.thread_id,
         text=comment.text,
-        user_id=user["id"]
+        user_id=user.id
     )
     db.add(new_comment)
     db.commit()
@@ -74,7 +74,7 @@ def delete_thread(
     thread = db.query(Thread).filter(Thread.id == thread_id).first()
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    if thread.user_id != user["id"]:
+    if thread.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this thread")
     db.delete(thread)
     db.commit()
@@ -89,7 +89,7 @@ def delete_comment(
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
-    if comment.user_id != user["id"]:
+    if comment.user_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this comment")
     db.delete(comment)
     db.commit()
