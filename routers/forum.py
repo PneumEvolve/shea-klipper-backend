@@ -74,11 +74,16 @@ def delete_thread(
     thread = db.query(Thread).filter(Thread.id == thread_id).first()
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    if thread.user_id != user.id:
+
+    is_moderator = user.email == "sheaklipper@gmail.com"
+
+    if thread.user_id != user.id and not is_moderator:
         raise HTTPException(status_code=403, detail="Not authorized to delete this thread")
+
     db.delete(thread)
     db.commit()
     return {"detail": "Thread deleted"}
+
 
 @router.delete("/comments/{comment_id}")
 def delete_comment(
@@ -89,8 +94,12 @@ def delete_comment(
     comment = db.query(Comment).filter(Comment.id == comment_id).first()
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
-    if comment.user_id != user.id:
+
+    is_moderator = user.email == "sheaklipper@gmail.com"
+
+    if comment.user_id != user.id and not is_moderator:
         raise HTTPException(status_code=403, detail="Not authorized to delete this comment")
+
     db.delete(comment)
     db.commit()
     return {"detail": "Comment deleted"}
