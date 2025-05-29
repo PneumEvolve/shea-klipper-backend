@@ -31,7 +31,7 @@ class User(Base):
     categories = relationship("Category", secondary=user_categories, back_populates="users")
     threads = relationship("Thread", back_populates="user", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
-
+    we_dream_entries = relationship("WeDreamEntry", back_populates="user")
 
 class Transcription(Base):
     __tablename__ = "transcriptions"
@@ -167,3 +167,24 @@ class Comment(Base):
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 👈 Optional
     user = relationship("User", back_populates="comments", lazy="joined")
+
+class WeDreamEntry(Base):
+    __tablename__ = "we_dream_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    vision = Column(Text, nullable=False)
+    mantra = Column(String, nullable=False)
+    is_active = Column(Integer, default=1)  # Only one active entry per user
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="we_dream_entries")
+
+class DreamMachineOutput(Base):
+    __tablename__ = "dream_machine_outputs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    summary = Column(Text, nullable=False)
+    mantra = Column(String, nullable=False)
+    entry_count = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
