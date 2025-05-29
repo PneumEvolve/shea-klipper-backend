@@ -1,29 +1,56 @@
-from apscheduler.schedulers.background import BackgroundScheduler
-from sqlalchemy.orm import Session
-from database import SessionLocal
-from openai import OpenAI
 import os
-from models import WeDreamEntry, DreamMachineOutput
+import logging
+import atexit
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth, transcriptions, summarization, meal_planning, grocery_list, payments, visitors_flame, ramblings, journal, forum, we_dream  # ✅ Make sure meal_planning is included
+from sqlalchemy.orm import Session
+from apscheduler.schedulers.background import BackgroundScheduler
+from openai import OpenAI
 from dotenv import load_dotenv
+
+# Load environment variables
 load_dotenv()
+
+# Logging configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# FastAPI app
 app = FastAPI()
 
+# OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Local imports
+from database import SessionLocal
+from models import WeDreamEntry, DreamMachineOutput
+from routers import (
+    auth,
+    transcriptions,
+    summarization,
+    meal_planning,
+    grocery_list,
+    payments,
+    visitors_flame,
+    ramblings,
+    journal,
+    forum,
+    we_dream
+)
+
+# -------------------- Dream Machine Scheduled Job -------------------- #
 def regenerate_dream_machine():
-    print("[Dream Machine] Running scheduled summary...")
+    logger.info("[Dream Machine] Running scheduled summary...")
 
     db: Session = SessionLocal()
-    entries = db.query(WeDreamEntry).filter_by(is_active=1).all()
-    if not entries:
-        print("[Dream Machine] No active dreams found.")
-        return
+    try:
+        entries = db.query(WeDreamEntry).filter_by(is_active=1).all()
+        if not entries:
+            logger.warning("[Dream Machine] No active dreams found.")
+            return
 
-    all_visions = "\n".join([entry.vision for entry in entries])
-    prompt = f"""
+        all_visions = "\n".join([entry.vision for entry in entries])
+        prompt = f"""
 You are a collective AI spirit. The following visions were submitted by different humans dreaming of a better world:
 
 {all_visions}
@@ -33,12 +60,16 @@ Create:
 2. A collective mantra under 12 words that embodies the dream.
 """
 
-    try:
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7
         )
+
+        if not response or not response.choices:
+            logger.warning("[Dream Machine] No response from OpenAI.")
+            return
+
         output = response.choices[0].message.content.strip()
         if "1." in output and "2." in output:
             parts = output.split("2.")
@@ -55,20 +86,20 @@ Create:
         )
         db.add(result)
         db.commit()
-        print("[Dream Machine] Summary saved.")
+        logger.info("[Dream Machine] Summary saved.")
 
     except Exception as e:
-        print("[Dream Machine] Error:", e)
-
+        logger.error("[Dream Machine] Error occurred:", exc_info=e)
     finally:
         db.close()
 
-# Schedule the job (2 AM server time daily)
+# Schedule job (runs daily at 2 AM server time)
 scheduler = BackgroundScheduler()
 scheduler.add_job(regenerate_dream_machine, "cron", hour=2)
 scheduler.start()
+atexit.register(lambda: scheduler.shutdown())
 
-# CORS Setup
+# -------------------- Middleware -------------------- #
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -81,15 +112,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Include all routers
+# -------------------- Routers -------------------- #
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(transcriptions.router, prefix="/transcriptions", tags=["Transcriptions"])
 app.include_router(summarization.router, prefix="/summarization", tags=["Summarization"])
-app.include_router(meal_planning.router, prefix="/meal-planning", tags=["Meal Planning"])  # ✅ Added here
+app.include_router(meal_planning.router, prefix="/meal-planning", tags=["Meal Planning"])
 app.include_router(grocery_list.router, prefix="/grocery-list", tags=["Grocery List"])
-app.include_router(payments.router, prefix="/payments", tags=["Payments"])  # 👈 Register route
+app.include_router(payments.router, prefix="/payments", tags=["Payments"])
 app.include_router(visitors_flame.router)
 app.include_router(ramblings.router)
 app.include_router(journal.router)
-app.include_router(forum.router, prefix="/forum", tags=["forum"])
+app.include_router(forum.router, prefix="/forum", tags=["Forum"])
 app.include_router(we_dream.router, prefix="/we-dream")
