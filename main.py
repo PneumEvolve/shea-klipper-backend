@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import auth, transcriptions, summarization, meal_planning, grocery_list, payments, visitors_flame, ramblings, journal, forum  # ✅ Make sure meal_planning is included
+from routers import auth, transcriptions, summarization, meal_planning, grocery_list, payments, visitors_flame, ramblings, journal, forum, we_dream  # ✅ Make sure meal_planning is included
 from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
@@ -29,3 +29,4 @@ app.include_router(visitors_flame.router)
 app.include_router(ramblings.router)
 app.include_router(journal.router)
 app.include_router(forum.router, prefix="/forum", tags=["forum"])
+app.include_router(we_dream.router, prefix="/we-dream")
