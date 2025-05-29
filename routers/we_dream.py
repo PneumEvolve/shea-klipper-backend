@@ -33,3 +33,12 @@ Keep it under 12 words.
     except Exception as e:
         print("OpenAI error:", e)
         return {"mantra": "Failed to generate mantra."}
+
+@router.get("/summary")
+def get_collective_summary():
+    # Later you’ll dynamically generate this from actual entries
+    return {"summary": "Humanity dreams of peace, freedom, and ecological harmony."}
+
+@router.get("/mantra")
+def get_collective_mantra():
+    return {"mantra": "We rise as one, guided by truth and love."}
