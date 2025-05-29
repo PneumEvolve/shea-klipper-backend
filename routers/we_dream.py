@@ -136,3 +136,24 @@ Create:
 
     except Exception as e:
         return {"message": "Error generating dream machine output.", "error": str(e)}
+    
+@router.get("/active")
+def get_active_we_dream_entry(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    entry = (
+        db.query(WeDreamEntry)
+        .filter_by(user_id=current_user.id, is_active=1)
+        .order_by(WeDreamEntry.created_at.desc())
+        .first()
+    )
+
+    if not entry:
+        return {"vision": "", "mantra": "", "exists": False}
+
+    return {
+        "vision": entry.vision,
+        "mantra": entry.mantra,
+        "exists": True
+    }
