@@ -62,9 +62,9 @@ def save_we_dream_entry(
         raise HTTPException(status_code=400, detail="Vision and mantra required.")
 
     # Deactivate existing entries
-    db.query(WeDreamEntry).filter_by(user_id=current_user["id"], is_active=1).update({"is_active": 0})
+    db.query(WeDreamEntry).filter_by(user_id=current_user.id, is_active=1).update({"is_active": 0})
 
-    new_entry = WeDreamEntry(user_id=current_user["id"], vision=vision, mantra=mantra)
+    new_entry = WeDreamEntry(user_id=current_user.id, vision=vision, mantra=mantra)
     db.add(new_entry)
     db.commit()
     db.refresh(new_entry)
