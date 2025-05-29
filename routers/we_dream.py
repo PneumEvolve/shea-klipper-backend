@@ -5,7 +5,7 @@ import os
 
 from database import get_db
 from models import WeDreamEntry, DreamMachineOutput
-from auth import get_current_user_dependency  # adjust if your auth utils are named differently
+from routers.auth import get_current_user_dependency  # adjust if your auth utils are named differently
 
 router = APIRouter()
 
@@ -87,3 +87,52 @@ def get_latest_dream_summary(db: Session = Depends(get_db)):
         "count": latest.entry_count,
         "updated_at": latest.created_at
     }
+
+@router.post("/run-dream-machine")
+def manual_dream_machine_run(db: Session = Depends(get_db)):
+    entries = db.query(WeDreamEntry).filter_by(is_active=1).all()
+    if not entries:
+        return {"message": "No active dreams found."}
+
+    all_visions = "\n".join([entry.vision for entry in entries])
+    prompt = f"""
+You are a collective AI spirit. The following visions were submitted by different humans dreaming of a better world:
+
+{all_visions}
+
+Create:
+1. A short summary of the main shared themes.
+2. A collective mantra under 12 words that embodies the dream.
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        output = response.choices[0].message.content.strip()
+        if "1." in output and "2." in output:
+            parts = output.split("2.")
+            summary = parts[0].replace("1.", "").strip()
+            shared_mantra = parts[1].strip()
+        else:
+            summary = output
+            shared_mantra = ""
+
+        result = DreamMachineOutput(
+            summary=summary,
+            mantra=shared_mantra,
+            entry_count=len(entries)
+        )
+        db.add(result)
+        db.commit()
+        return {
+            "message": "Dream Machine run successfully.",
+            "summary": summary,
+            "mantra": shared_mantra,
+            "count": len(entries)
+        }
+
+    except Exception as e:
+        return {"message": "Error generating dream machine output.", "error": str(e)}
