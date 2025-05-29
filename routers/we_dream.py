@@ -157,3 +157,15 @@ def get_active_we_dream_entry(
         "mantra": entry.mantra,
         "exists": True
     }
+
+@router.post("/clear")
+def clear_we_dream_entry(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    updated = db.query(WeDreamEntry).filter_by(user_id=current_user.id, is_active=1).update({"is_active": 0})
+    db.commit()
+    if updated:
+        return {"message": "Dream entry cleared."}
+    else:
+        return {"message": "No active dream to clear."}
