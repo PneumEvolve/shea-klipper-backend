@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Request
-import openai  # or wherever your AI logic is
+from openai import OpenAI
+import os
 
 router = APIRouter()
 
-# FastAPI example route
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 @router.post("/manifest")
 async def manifest_vision(request: Request):
     data = await request.json()
@@ -21,10 +23,13 @@ Use language of empowerment, unity, and truth.
 Keep it under 12 words.
 """
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
-    )
-
-    return {"mantra": response['choices'][0]['message']['content'].strip()}
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
+        )
+        return {"mantra": response.choices[0].message.content.strip()}
+    except Exception as e:
+        print("OpenAI error:", e)
+        return {"mantra": "Failed to generate mantra."}
