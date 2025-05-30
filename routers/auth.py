@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from utils.email import send_email
-from schemas import UserResponse
+from schemas import UserResponse, UserCreate
 from models import Category, user_categories
 from sqlalchemy import text
 
@@ -32,10 +32,7 @@ router = APIRouter()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# ✅ Define User Schema for Signup
-class UserCreate(BaseModel):
-    email: str
-    password: str
+
 
 # ✅ Hash password
 def hash_password(password: str):
@@ -82,6 +79,10 @@ def verify_password_reset_token(token: str) -> Optional[str]:
 # ✅ SIGNUP Endpoint
 @router.post("/signup")
 def signup(user_data: UserCreate, db: Session = Depends(get_db)):
+    # ✅ RECAPTCHA check here instead
+    if not verify_recaptcha(user_data.recaptcha_token):
+        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
+
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
