@@ -6,6 +6,7 @@ from datetime import datetime
 class UserCreate(BaseModel):
     email: str
     password: str
+    recaptcha_token: str
 
 class Token(BaseModel):
     access_token: str
