@@ -57,17 +57,23 @@ def save_we_dream_entry(
     current_user: dict = Depends(get_current_user_dependency)
 ):
     vision = entry.get("vision", "")
-    mantra = entry.get("mantra", "")
-    if not vision or not mantra:
-        raise HTTPException(status_code=400, detail="Vision and mantra required.")
+    mantra = entry.get("mantra", "") or ""
 
-    # Deactivate existing entries
+    if not vision:
+        raise HTTPException(status_code=400, detail="Vision is required.")
+
+    # Deactivate previous entries
     db.query(WeDreamEntry).filter_by(user_id=current_user.id, is_active=1).update({"is_active": 0})
 
-    new_entry = WeDreamEntry(user_id=current_user.id, vision=vision, mantra=mantra)
+    new_entry = WeDreamEntry(
+        user_id=current_user.id,
+        vision=vision,
+        mantra=mantra
+    )
     db.add(new_entry)
     db.commit()
     db.refresh(new_entry)
+
     return {"message": "Entry saved successfully."}
 
 # ---------------------- Collective Summary + Mantra ---------------------- #

@@ -89,3 +89,7 @@ class ThreadCreate(BaseModel):
 class CommentCreate(BaseModel):
     thread_id: int
     text: str
+
+class WeDreamEntrySchema(BaseModel):
+    vision: str
+    mantra: str
