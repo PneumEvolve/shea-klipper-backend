@@ -239,3 +239,20 @@ def add_ingredients_from_recipes(recipe_ids: list[int], db: Session = Depends(ge
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to import ingredients from recipes: {str(e)}")
+
+@router.delete("/grocery-list/grocery-list/clear")
+def clear_grocery_list(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    grocery_list = (
+        db.query(GroceryList)
+        .filter_by(user_id=current_user.id)
+        .order_by(GroceryList.created_at.desc())
+        .first()
+    )
+    if grocery_list:
+        db.query(GroceryItem).filter_by(grocery_list_id=grocery_list.id).delete()
+        db.commit()
+        return {"message": "Grocery list cleared."}
+    return {"message": "No grocery list found."}
