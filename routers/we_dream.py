@@ -175,3 +175,7 @@ def clear_we_dream_entry(
         return {"message": "Dream entry cleared."}
     else:
         return {"message": "No active dream to clear."}
+    
+@router.get("/ping-dream-machine")
+def ping_trigger_dream_machine(db: Session = Depends(get_db)):
+    return manual_dream_machine_run(db)
