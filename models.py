@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
 
-# ✅ Many-to-Many Relationship Between Users and Categories
+# ✅ Many-to-Many Relationships
 user_categories = Table(
     "user_categories",
     Base.metadata,
@@ -39,8 +39,9 @@ class User(Base):
     threads = relationship("Thread", back_populates="user", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
     we_dream_entries = relationship("WeDreamEntry", back_populates="user")
-    nodes = relationship("Node", back_populates="user")
-    nodes_joined = relationship(
+
+    nodes = relationship("Node", back_populates="user")  # Nodes this user created
+    nodes_joined = relationship(  # Nodes this user joined
         "Node",
         secondary=node_membership,
         back_populates="members"
@@ -59,6 +60,7 @@ class Transcription(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="transcriptions")
 
+
 class Recipe(Base):
     __tablename__ = "recipes"
 
@@ -72,6 +74,7 @@ class Recipe(Base):
 
     user = relationship("User", back_populates="recipes")
 
+
 class FoodInventory(Base):
     __tablename__ = "food_inventory"
 
@@ -84,6 +87,7 @@ class FoodInventory(Base):
 
     user = relationship("User", back_populates="food_inventory")
 
+
 class Category(Base):
     __tablename__ = "categories"
 
@@ -92,6 +96,7 @@ class Category(Base):
     type = Column(String, nullable=False, default="food")
 
     users = relationship("User", secondary=user_categories, back_populates="categories")
+
 
 class GroceryList(Base):
     __tablename__ = "grocery_lists"
@@ -102,6 +107,7 @@ class GroceryList(Base):
 
     user = relationship("User", back_populates="grocery_lists")
     items = relationship("GroceryItem", back_populates="grocery_list", cascade="all, delete-orphan")
+
 
 class GroceryItem(Base):
     __tablename__ = "grocery_items"
@@ -114,6 +120,7 @@ class GroceryItem(Base):
 
     grocery_list = relationship("GroceryList", back_populates="items")
 
+
 class TranscriptionUsage(Base):
     __tablename__ = "transcription_usage"
 
@@ -124,6 +131,7 @@ class TranscriptionUsage(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="transcription_usages")
+
 
 class Payment(Base):
     __tablename__ = "payments"
@@ -138,6 +146,7 @@ class Payment(Base):
 
     user = relationship("User", back_populates="payments")
 
+
 class Rambling(Base):
     __tablename__ = "ramblings"
 
@@ -148,8 +157,10 @@ class Rambling(Base):
 
     user = relationship("User", back_populates="ramblings")
 
+
 class JournalEntry(Base):
     __tablename__ = "journal_entries"
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     title = Column(String, nullable=False)
@@ -161,17 +172,22 @@ class JournalEntry(Base):
 
     user = relationship("User", back_populates="journal_entries")
 
+
 class Thread(Base):
     __tablename__ = "threads"
+
     id = Column(Integer, primary_key=True, index=True)
     text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 👈 Nullable for anonymous
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     user = relationship("User", back_populates="threads", lazy="joined")
     comments = relationship("Comment", back_populates="thread", cascade="all, delete")
 
+
 class Comment(Base):
     __tablename__ = "comments"
+
     id = Column(Integer, primary_key=True)
     text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -179,8 +195,9 @@ class Comment(Base):
     thread_id = Column(Integer, ForeignKey("threads.id"))
     thread = relationship("Thread", back_populates="comments")
 
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # 👈 Optional
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     user = relationship("User", back_populates="comments", lazy="joined")
+
 
 class WeDreamEntry(Base):
     __tablename__ = "we_dream_entries"
@@ -189,10 +206,11 @@ class WeDreamEntry(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     vision = Column(Text, nullable=False)
     mantra = Column(String, nullable=False)
-    is_active = Column(Integer, default=1)  # Only one active entry per user
+    is_active = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="we_dream_entries")
+
 
 class DreamMachineOutput(Base):
     __tablename__ = "dream_machine_outputs"
@@ -203,6 +221,7 @@ class DreamMachineOutput(Base):
     entry_count = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
 class Node(Base):
     __tablename__ = "nodes"
 
@@ -211,12 +230,12 @@ class Node(Base):
     mission = Column(String, nullable=True)
     resources = Column(String, nullable=True)
     skills_needed = Column(String, nullable=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    members = relationship(
-    "User",
-    secondary=node_membership,
-    back_populates="nodes_joined"
-)
 
-user = relationship("User", back_populates="nodes")   
-    
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user = relationship("User", back_populates="nodes")  # Creator
+
+    members = relationship(
+        "User",
+        secondary=node_membership,
+        back_populates="nodes_joined"
+    )
