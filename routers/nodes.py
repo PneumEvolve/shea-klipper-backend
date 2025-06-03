@@ -54,3 +54,20 @@ def get_user_nodes(
     current_user: User = Depends(get_current_user_dependency)
 ):
     return db.query(Node).filter(Node.user_id == current_user.id).all()
+
+@router.post("/join/{node_id}")
+def join_node(
+    node_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency)
+):
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    if node in current_user.nodes_joined:
+        raise HTTPException(status_code=400, detail="Already joined this node")
+
+    current_user.nodes_joined.append(node)
+    db.commit()
+    return {"message": "Successfully joined node."}
