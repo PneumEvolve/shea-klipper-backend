@@ -11,6 +11,13 @@ user_categories = Table(
     Column("category_id", Integer, ForeignKey("categories.id"), primary_key=True)
 )
 
+node_membership = Table(
+    "node_membership",
+    Base.metadata,
+    Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
+    Column("node_id", Integer, ForeignKey("nodes.id"), primary_key=True)
+)
+
 class User(Base):
     __tablename__ = "users"
 
@@ -33,6 +40,12 @@ class User(Base):
     comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
     we_dream_entries = relationship("WeDreamEntry", back_populates="user")
     nodes = relationship("Node", back_populates="user")
+    nodes_joined = relationship(
+        "Node",
+        secondary=node_membership,
+        back_populates="members"
+    )
+
 
 class Transcription(Base):
     __tablename__ = "transcriptions"
@@ -199,5 +212,9 @@ class Node(Base):
     resources = Column(String, nullable=True)
     skills_needed = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-
-    user = relationship("User", back_populates="nodes")
+    members = relationship(
+    "User",
+    secondary=node_membership,
+    back_populates="nodes_joined"
+)
+    
