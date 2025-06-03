@@ -146,18 +146,15 @@ async def login(
     return {"access_token": access_token, "token_type": "bearer"}
 
 # ✅ Dependency to Get Current User
-def get_current_user_dependency(
-    token: str = Security(oauth2_scheme),
-    db: Session = Depends(get_db)
-) -> User:
-    print(f"🔹 Received token: {token}")
+def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Session = Depends(get_db)):
+    print(f"🔹 Received token: {token}")  # ✅ Log incoming token for debugging
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user = db.query(User).filter(User.id == payload.get("id")).first()
         if not user:
             print("🔴 Invalid authentication: User not found")
             raise HTTPException(status_code=401, detail="Invalid authentication")
-        return user  # ✅ Return full SQLAlchemy model
+        return UserResponse(id=user.id, email=user.email)
     except jwt.ExpiredSignatureError:
         print("🔴 Token expired")
         raise HTTPException(status_code=401, detail="Token expired")
