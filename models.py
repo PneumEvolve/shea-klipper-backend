@@ -32,6 +32,7 @@ class User(Base):
     threads = relationship("Thread", back_populates="user", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
     we_dream_entries = relationship("WeDreamEntry", back_populates="user")
+    nodes = relationship("Node", back_populates="user")
 
 class Transcription(Base):
     __tablename__ = "transcriptions"
@@ -188,3 +189,15 @@ class DreamMachineOutput(Base):
     mantra = Column(String, nullable=False)
     entry_count = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class Node(Base):
+    __tablename__ = "nodes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    mission = Column(String, nullable=True)
+    resources = Column(String, nullable=True)
+    skills_needed = Column(String, nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+
+    user = relationship("User", back_populates="nodes")
