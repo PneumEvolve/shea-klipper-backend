@@ -7,7 +7,7 @@ from database import get_db
 from models import Node, User
 from routers.auth import get_current_user_dependency
 
-router = APIRouter(prefix="/", tags=["Nodes"])
+router = APIRouter(tags=["Nodes"])
 
 class NodeCreate(BaseModel):
     name: str
