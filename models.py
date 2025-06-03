@@ -217,4 +217,6 @@ class Node(Base):
     secondary=node_membership,
     back_populates="nodes_joined"
 )
+
+user = relationship("User", back_populates="nodes")   
     
