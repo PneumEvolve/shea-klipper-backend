@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from database import get_db
 from models import Node, User
-from dependencies import get_current_user_dependency
+from routers.auth import get_current_user_dependency
 
 router = APIRouter(prefix="/nodes", tags=["Nodes"])
 
