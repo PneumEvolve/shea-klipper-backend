@@ -5,9 +5,9 @@ from typing import List, Optional
 
 from database import get_db
 from models import Node, User
-from routers.auth import get_current_user_dependency
+from dependencies import get_current_user_dependency
 
-router = APIRouter(tags=["Nodes"])
+router = APIRouter(prefix="/nodes", tags=["Nodes"])
 
 class NodeCreate(BaseModel):
     name: str
@@ -21,7 +21,7 @@ class NodeOut(BaseModel):
     mission: Optional[str]
     resources: Optional[str]
     skills_needed: Optional[str]
-    creator_id: int
+    user_id: int
 
     class Config:
         orm_mode = True
@@ -37,7 +37,7 @@ def create_node(
         mission=node_data.mission,
         resources=node_data.resources,
         skills_needed=node_data.skills_needed,
-        creator_id=current_user.id
+        user_id=current_user.id
     )
     db.add(new_node)
     db.commit()
@@ -53,4 +53,4 @@ def get_user_nodes(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dependency)
 ):
-    return db.query(Node).filter(Node.creator_id == current_user.id).all()
+    return db.query(Node).filter(Node.user_id == current_user.id).all()
