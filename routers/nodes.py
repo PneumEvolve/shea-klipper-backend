@@ -5,9 +5,9 @@ from typing import List, Optional
 
 from database import get_db
 from models import Node, User
-from routers.auth import get_current_user_dependency
+from routers.auth import get_current_user_dependency, get_current_user_model
 
-router = APIRouter(prefix="/nodes", tags=["Nodes"])
+router = APIRouter(tags=["Nodes"])
 
 class NodeCreate(BaseModel):
     name: str
@@ -59,7 +59,7 @@ def get_user_nodes(
 def join_node(
     node_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency)
+    current_user: User = Depends(get_current_user_model)
 ):
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:

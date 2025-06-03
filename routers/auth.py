@@ -162,6 +162,19 @@ def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Sessio
         print("🔴 Invalid token")
         raise HTTPException(status_code=401, detail="Invalid token")
 
+# ✅ Use this when you need full access to relationships
+def get_current_user_model(token: str = Security(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user = db.query(User).filter(User.id == payload.get("id")).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+        return user  # return full model
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 # ✅ GET CURRENT USER Endpoint
 @router.get("/user", response_model=UserResponse)
 def get_current_user_route(current_user: UserResponse = Depends(get_current_user_dependency)):
