@@ -94,3 +94,35 @@ class CommentCreate(BaseModel):
 class WeDreamEntrySchema(BaseModel):
     vision: str
     mantra: str
+
+
+# Garden Schemas
+class GardenCreate(BaseModel):
+    type: str
+    host_name: str
+    location: str
+    description: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
+
+class GardenOut(GardenCreate):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+# Volunteer Application Schemas
+class VolunteerApplicationCreate(BaseModel):
+    garden_id: int
+    name: str
+    email: str
+    message: Optional[str] = None
+
+class VolunteerApplicationOut(VolunteerApplicationCreate):
+    id: int
+    approved: Optional[bool]
+    submitted_at: datetime
+
+    class Config:
+        from_attributes = True

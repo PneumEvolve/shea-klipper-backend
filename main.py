@@ -36,7 +36,8 @@ from routers import (
     journal,
     forum,
     we_dream,
-    nodes
+    nodes,
+    garden
 )
 
 # -------------------- Dream Machine Scheduled Job -------------------- #

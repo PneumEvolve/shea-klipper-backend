@@ -239,3 +239,32 @@ class Node(Base):
         secondary=node_membership,
         back_populates="nodes_joined"
     )
+
+class Garden(Base):
+    __tablename__ = "gardens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String, nullable=False)  # e.g., "private", "community", "school"
+    host_name = Column(String, nullable=False)
+    location = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    status = Column(String, default="active")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    applications = relationship("VolunteerApplication", back_populates="garden", cascade="all, delete-orphan")
+
+
+# Volunteer Application model
+class VolunteerApplication(Base):
+    __tablename__ = "volunteer_applications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    garden_id = Column(Integer, ForeignKey("gardens.id"), nullable=False)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    message = Column(Text, nullable=True)
+    approved = Column(Boolean, default=False)
+    submitted_at = Column(DateTime, default=datetime.utcnow)
+
+    garden = relationship("Garden", back_populates="applications")
