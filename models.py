@@ -268,3 +268,13 @@ class VolunteerApplication(Base):
     submitted_at = Column(DateTime, default=datetime.utcnow)
 
     garden = relationship("Garden", back_populates="applications")
+
+class VolunteerRequest(Base):
+    __tablename__ = "volunteer_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    garden_id = Column(Integer, ForeignKey("gardens.id", ondelete="CASCADE"), nullable=False)
+    volunteer_name = Column(String, nullable=False)
+    volunteer_email = Column(String, nullable=True)
+    status = Column(String, default="Pending")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -126,3 +126,23 @@ class VolunteerApplicationOut(VolunteerApplicationCreate):
 
     class Config:
         from_attributes = True
+
+
+class VolunteerRequestCreate(BaseModel):
+    garden_id: int
+    volunteer_name: str
+    volunteer_email: Optional[str] = None
+
+class VolunteerRequestResponse(BaseModel):
+    id: int
+    garden_id: int
+    volunteer_name: str
+    volunteer_email: Optional[str]
+    status: str
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
+class VolunteerRequestUpdate(BaseModel):
+    status: str
