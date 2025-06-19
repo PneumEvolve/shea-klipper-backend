@@ -4,7 +4,7 @@ from database import get_db
 import models, schemas
 from typing import List
 from datetime import datetime
-from auth import get_current_user  # if you have this in your auth file
+from auth import get_current_user_dependency as get_current_user  # if you have this in your auth file
 from models import User
 
 router = APIRouter(prefix="/gardens", tags=["Gardens"])
