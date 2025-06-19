@@ -4,13 +4,23 @@ from database import get_db
 import models, schemas
 from typing import List
 from datetime import datetime
+from auth import get_current_user  # if you have this in your auth file
+from models import User
 
 router = APIRouter(prefix="/gardens", tags=["Gardens"])
 
 # Create a garden
 @router.post("/", response_model=schemas.GardenOut)
-def create_garden(garden: schemas.GardenCreate, db: Session = Depends(get_db)):
-    db_garden = models.Garden(**garden.dict(), created_at=datetime.utcnow())
+def create_garden(
+    garden: schemas.GardenCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    db_garden = models.Garden(
+        **garden.dict(),
+        host_id=current_user.id,  # <-- LINK garden to user
+        created_at=datetime.utcnow()
+    )
     db.add(db_garden)
     db.commit()
     db.refresh(db_garden)

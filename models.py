@@ -39,6 +39,7 @@ class User(Base):
     threads = relationship("Thread", back_populates="user", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
     we_dream_entries = relationship("WeDreamEntry", back_populates="user")
+    gardens = relationship("Garden", back_populates="host")
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -244,13 +245,16 @@ class Garden(Base):
     __tablename__ = "gardens"
 
     id = Column(Integer, primary_key=True, index=True)
-    type = Column(String, nullable=False)  # e.g., "private", "community", "school"
+    type = Column(String, nullable=False)
     host_name = Column(String, nullable=False)
     location = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     status = Column(String, default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    host_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # NEW
+    host = relationship("User", back_populates="gardens")  # NEW
 
     applications = relationship("VolunteerApplication", back_populates="garden", cascade="all, delete-orphan")
 
