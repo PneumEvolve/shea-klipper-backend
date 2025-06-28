@@ -29,7 +29,7 @@ def update_post(
     post_id: int,
     updated_post: BlogPostCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_dependency)
 ):
     post = db.query(BlogPost).filter(BlogPost.id == post_id).first()
 
@@ -48,7 +48,7 @@ def update_post(
 def delete_post(
     post_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_dependency)
 ):
     post = db.query(BlogPost).filter(BlogPost.id == post_id).first()
 
@@ -107,7 +107,7 @@ def get_comments(post_id: int, db: Session = Depends(get_db)):
 def delete_comment(
     comment_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_dependency)
 ):
     comment = db.query(BlogComment).filter(BlogComment.id == comment_id).first()
 
