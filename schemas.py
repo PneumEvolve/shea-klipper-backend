@@ -146,3 +146,33 @@ class VolunteerRequestResponse(BaseModel):
 
 class VolunteerRequestUpdate(BaseModel):
     status: str
+
+# Blog Post Schemas
+class BlogPostCreate(BaseModel):
+    title: str
+    content: str
+
+
+class BlogPostOut(BlogPostCreate):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    user_id: int
+
+    class Config:
+        from_attributes = True
+
+
+# Blog Comment Schemas
+class BlogCommentCreate(BaseModel):
+    post_id: int
+    content: str
+
+
+class BlogCommentOut(BlogCommentCreate):
+    id: int
+    created_at: datetime
+    user_id: Optional[int]
+
+    class Config:
+        from_attributes = True
