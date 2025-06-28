@@ -4,7 +4,7 @@ from typing import List
 from database import get_db
 from models import BlogPost, BlogComment, User
 from schemas import BlogPostCreate, BlogPostOut, BlogCommentCreate, BlogCommentOut
-from auth import get_current_user  # Assuming you already use this
+from routers.auth import get_current_user  # Assuming you already use this
 
 router = APIRouter(
     prefix="/blog",
