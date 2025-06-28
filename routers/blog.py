@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Path
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
@@ -23,6 +23,43 @@ def get_post(post_id: int, db: Session = Depends(get_db)):
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     return post
+
+@router.put("/{post_id}", response_model=BlogPostOut)
+def update_post(
+    post_id: int,
+    updated_post: BlogPostCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    post = db.query(BlogPost).filter(BlogPost.id == post_id).first()
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if current_user.email != "sheaklipper@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    post.title = updated_post.title
+    post.content = updated_post.content
+    db.commit()
+    db.refresh(post)
+    return post
+
+@router.delete("/{post_id}")
+def delete_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    post = db.query(BlogPost).filter(BlogPost.id == post_id).first()
+
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if current_user.email != "sheaklipper@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    db.delete(post)
+    db.commit()
+    return {"message": "Post deleted"}
 
 # ✅ Create new blog post (only if user is sheaklipper@gmail.com)
 @router.post("/", response_model=BlogPostOut)
@@ -65,3 +102,20 @@ def add_comment(
 @router.get("/{post_id}/comments", response_model=List[BlogCommentOut])
 def get_comments(post_id: int, db: Session = Depends(get_db)):
     return db.query(BlogComment).filter(BlogComment.post_id == post_id).order_by(BlogComment.created_at.asc()).all()
+
+@router.delete("/comment/{comment_id}")
+def delete_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    comment = db.query(BlogComment).filter(BlogComment.id == comment_id).first()
+
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if current_user.email != "sheaklipper@gmail.com":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    db.delete(comment)
+    db.commit()
+    return {"message": "Comment deleted"}
