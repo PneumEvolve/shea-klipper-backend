@@ -4,7 +4,7 @@ from typing import List
 from database import get_db
 from models import BlogPost, BlogComment, User
 from schemas import BlogPostCreate, BlogPostOut, BlogCommentCreate, BlogCommentOut
-from routers.auth import get_current_user  # Assuming you already use this
+from routers.auth import get_current_user_dependency  # Assuming you already use this
 
 router = APIRouter(
     prefix="/blog",
@@ -29,7 +29,7 @@ def get_post(post_id: int, db: Session = Depends(get_db)):
 def create_post(
     post_data: BlogPostCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_dependency)
 ):
     if current_user.email != "sheaklipper@gmail.com":
         raise HTTPException(status_code=403, detail="Only Shea can post")
@@ -49,7 +49,7 @@ def create_post(
 def add_comment(
     comment: BlogCommentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_dependency)
 ):
     new_comment = BlogComment(
         content=comment.content,
