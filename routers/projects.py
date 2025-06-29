@@ -24,7 +24,7 @@ def get_project(project_id: UUID, db: Session = Depends(get_db), user: User = De
     return project
 
 @router.post("/", response_model=ProjectSchema)
-def create_project(project: ProjectCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_project(project: ProjectCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user_dependency)):
     db_project = Project(user_id=user.id, **project.dict())
     db.add(db_project)
     db.commit()
@@ -43,7 +43,7 @@ def update_project(project_id: UUID, project_data: ProjectCreate, db: Session = 
     return project
 
 @router.delete("/{project_id}")
-def delete_project(project_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_project(project_id: UUID, db: Session = Depends(get_db), user: User = Depends(get_current_user_dependency)):
     project = db.query(Project).filter(Project.id == project_id, Project.user_id == user.id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -65,7 +65,7 @@ def add_task(project_id: UUID, task: ProjectTaskCreate, db: Session = Depends(ge
     return db_task
 
 @router.put("/tasks/{task_id}", response_model=ProjectTaskSchema)
-def update_task(task_id: UUID, task_data: ProjectTaskCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def update_task(task_id: UUID, task_data: ProjectTaskCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user_dependency)):
     task = db.query(ProjectTask).join(Project).filter(ProjectTask.id == task_id, Project.user_id == user.id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
