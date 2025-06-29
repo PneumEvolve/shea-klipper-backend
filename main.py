@@ -39,7 +39,8 @@ from routers import (
     nodes,
     garden,
     volunteers,
-    blog
+    blog,
+    projects
 )
 
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -132,3 +133,4 @@ app.include_router(nodes.router, prefix="/nodes")
 app.include_router(garden.router)
 app.include_router(volunteers.router)
 app.include_router(blog.router)
+app.include_router(projects.router)

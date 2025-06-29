@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
+from uuid import UUID
 
 # User Schema
 class UserCreate(BaseModel):
@@ -176,3 +177,33 @@ class BlogCommentOut(BlogCommentCreate):
 
     class Config:
         from_attributes = True
+
+# Projects
+
+class ProjectTaskBase(BaseModel):
+    content: str
+    completed: bool = False
+
+class ProjectTaskCreate(ProjectTaskBase):
+    pass
+
+class ProjectTask(ProjectTaskBase):
+    id: UUID
+
+    class Config:
+        orm_mode = True
+
+class ProjectBase(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    links: List[str] = []
+
+class ProjectCreate(ProjectBase):
+    pass
+
+class Project(ProjectBase):
+    id: UUID
+    tasks: List[ProjectTask]
+
+    class Config:
+        orm_mode = True

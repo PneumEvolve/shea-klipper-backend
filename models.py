@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
+import uuid
 from datetime import datetime
 from database import Base
 
@@ -310,3 +312,25 @@ class BlogComment(Base):
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     user = relationship("User")
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(Integer, ForeignKey("users.id"))  # Adjust to your user model
+    name = Column(String, nullable=False)
+    description = Column(Text, default="")
+    links = Column(ARRAY(Text), default=[])
+
+    tasks = relationship("ProjectTask", back_populates="project", cascade="all, delete-orphan")
+
+
+class ProjectTask(Base):
+    __tablename__ = "project_tasks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"))
+    content = Column(Text, nullable=False)
+    completed = Column(Boolean, default=False)
+
+    project = relationship("Project", back_populates="tasks")
