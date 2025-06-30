@@ -102,3 +102,16 @@ def generate_next_action(entry_id: int, db: Session = Depends(get_db), current_u
         return {"next_action": entry.next_action}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Next action generation failed: {str(e)}")
+
+
+@router.put("/journal/{entry_id}", response_model=JournalEntryOut)
+def update_entry(entry_id: int, updated_data: JournalEntryCreate, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+
+    entry.title = updated_data.title
+    entry.content = updated_data.content
+    db.commit()
+    db.refresh(entry)
+    return entry
