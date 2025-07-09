@@ -144,22 +144,36 @@ def import_recipe_from_url(
 def update_food_inventory(food_data: dict, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
     try:
         existing_inventory = db.query(FoodInventory).filter(FoodInventory.user_id == current_user.id).all()
-        inventory_dict = {item.name: item for item in existing_inventory}
+        inventory_by_id = {str(item.id): item for item in existing_inventory}
+        inventory_by_name = {item.name: item for item in existing_inventory}
 
         for item in food_data["items"]:
-            if item["name"] in inventory_dict:
-                inventory_dict[item["name"]].quantity = item["quantity"]
-                inventory_dict[item["name"]].desired_quantity = item["desiredQuantity"]
-                inventory_dict[item["name"]].categories = ",".join(item["categories"])
+            item_id = str(item.get("id"))
+            name = item["name"]
+
+            if item_id and item_id in inventory_by_id:
+                # Update by ID
+                existing_item = inventory_by_id[item_id]
+            elif name in inventory_by_name:
+                # Fall back to name match
+                existing_item = inventory_by_name[name]
             else:
-                new_inventory = FoodInventory(
+                # Create new
+                new_item = FoodInventory(
                     user_id=current_user.id,
-                    name=item["name"],
+                    name=name,
                     quantity=item["quantity"],
                     desired_quantity=item["desiredQuantity"],
                     categories=",".join(item["categories"])
                 )
-                db.add(new_inventory)
+                db.add(new_item)
+                continue  # skip to next item
+
+            # Update existing item
+            existing_item.name = name
+            existing_item.quantity = item["quantity"]
+            existing_item.desired_quantity = item["desiredQuantity"]
+            existing_item.categories = ",".join(item["categories"])
 
         db.commit()
         return {"message": "Food inventory updated successfully."}
@@ -167,7 +181,6 @@ def update_food_inventory(food_data: dict, db: Session = Depends(get_db), curren
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Error updating food inventory: {str(e)}")
-
 ### 🔍 Get User’s Food Inventory
 @router.get("/food-inventory")
 def get_food_inventory(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
