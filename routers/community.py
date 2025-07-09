@@ -4,6 +4,7 @@ from database import get_db
 from models import Community, CommunityMember, User
 from schemas import CommunityCreate, CommunityOut
 from routers.auth import get_current_user_dependency
+from typing import List
 
 router = APIRouter(prefix="/communities", tags=["communities"])
 
