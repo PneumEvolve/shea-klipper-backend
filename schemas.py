@@ -16,7 +16,7 @@ class Token(BaseModel):
 class UserResponse(BaseModel):
     id: int
     email: EmailStr
-    
+    username: str | None = None
 
     class Config:
         from_attributes = True  # ✅ Fix for Pydantic V2
