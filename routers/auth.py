@@ -262,7 +262,7 @@ def get_current_user(user: User = Depends(get_current_user_dependency)):
 def update_username(
     payload: UsernameUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency),
+    current_user: User = Depends(get_current_user_model),
 ):
     # Optional: Check if username already exists
     existing = db.query(User).filter(User.username == payload.username).first()
