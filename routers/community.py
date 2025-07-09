@@ -51,6 +51,27 @@ def get_community_by_id(
         raise HTTPException(status_code=404, detail="Community not found")
     return community
 
+@router.put("/{community_id}", response_model=CommunityOut)
+def update_community(
+    community_id: int,
+    update_data: CommunityUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_dependency),
+):
+    community = db.query(Community).filter(Community.id == community_id).first()
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    if community.creator_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    community.name = update_data.name
+    community.description = update_data.description
+    community.visibility = update_data.visibility
+    db.commit()
+    db.refresh(community)
+    return community
+
 # Request to join a community
 @router.post("/{community_id}/join")
 def request_to_join_community(
@@ -177,23 +198,3 @@ def remove_member(
     db.commit()
     return {"detail": "Member removed"}
 
-@router.put("/communities/{community_id}", response_model=CommunityOut)
-def update_community(
-    community_id: int,
-    update_data: CommunityUpdate,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user_dependency),
-):
-    community = db.query(Community).filter(Community.id == community_id).first()
-    if not community:
-        raise HTTPException(status_code=404, detail="Community not found")
-
-    if community.creator_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not authorized")
-
-    community.name = update_data.name
-    community.description = update_data.description
-    community.visibility = update_data.visibility
-    db.commit()
-    db.refresh(community)
-    return community
