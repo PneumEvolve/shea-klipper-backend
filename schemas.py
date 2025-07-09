@@ -236,3 +236,6 @@ class CommunityUpdate(BaseModel):
     name: str
     description: Optional[str]
     visibility: str
+
+class UsernameUpdate(BaseModel):
+    username: str

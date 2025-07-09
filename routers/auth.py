@@ -14,11 +14,14 @@ from pathlib import Path
 from typing import Optional
 from utils.email import send_email
 from schemas import UserResponse, UserCreate
-from models import Category, user_categories
+from models import Category, user_categories, User
 from sqlalchemy import text
+from database import get_db
+from schemas import UsernameUpdate
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
+router = APIRouter()
 
 RECAPTCHA_SECRET = os.getenv("RECAPTCHA_SECRET")
 SECRET_KEY = os.getenv("SECRET_KEY", "fallback-secret")
@@ -246,3 +249,27 @@ def decode_token_raw(token: str, db: Session) -> Optional[UserResponse]:
     except Exception as e:
         print("Token decode failed:", e)
         return None
+    
+@router.get("/account/me")
+def get_current_user(user: User = Depends(get_current_user_dependency)):
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+    }
+
+@router.put("/account/username")
+def update_username(
+    payload: UsernameUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency),
+):
+    # Optional: Check if username already exists
+    existing = db.query(User).filter(User.username == payload.username).first()
+    if existing and existing.id != current_user.id:
+        raise HTTPException(status_code=400, detail="Username already taken")
+
+    current_user.username = payload.username
+    db.commit()
+    db.refresh(current_user)
+    return {"username": current_user.username}
