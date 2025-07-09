@@ -359,6 +359,7 @@ class CommunityMember(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     community_id = Column(Integer, ForeignKey("communities.id"))
     joined_at = Column(DateTime, default=datetime.utcnow)
+    is_approved = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="joined_communities")
     community = relationship("Community", back_populates="members")
