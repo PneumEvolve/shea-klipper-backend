@@ -131,3 +131,48 @@ def get_pending_requests(
     return db.query(CommunityMember).filter_by(
         community_id=community_id, is_approved=False
     ).all()
+
+@router.delete("/{community_id}")
+def delete_community(
+    community_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency),
+):
+    community = db.query(Community).filter_by(id=community_id).first()
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    if community.creator_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the creator can delete this community")
+
+    # Delete all associated members
+    db.query(CommunityMember).filter_by(community_id=community_id).delete()
+
+    db.delete(community)
+    db.commit()
+    return {"detail": "Community deleted successfully"}
+
+@router.delete("/{community_id}/members/{user_id}")
+def remove_member(
+    community_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency),
+):
+    community = db.query(Community).filter_by(id=community_id).first()
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    if community.creator_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the creator can remove members")
+
+    member = db.query(CommunityMember).filter_by(
+        user_id=user_id, community_id=community_id
+    ).first()
+
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    db.delete(member)
+    db.commit()
+    return {"detail": "Member removed"}
