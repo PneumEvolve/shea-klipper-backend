@@ -31,3 +31,10 @@ def create_community(
     db.commit()
 
     return new_community
+
+@router.get("/communities/", response_model=List[CommunityOut])
+def get_communities(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user_dependency)
+):
+    return db.query(Community).all()
