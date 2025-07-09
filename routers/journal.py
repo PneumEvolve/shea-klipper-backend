@@ -115,3 +115,17 @@ def update_entry(entry_id: int, updated_data: JournalEntryCreate, db: Session = 
     db.commit()
     db.refresh(entry)
     return entry
+
+@router.delete("/journal/{entry_id}/insight/{insight_type}", response_model=dict)
+def delete_insight(entry_id: int, insight_type: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user_dependency)):
+    entry = db.query(JournalEntry).filter(JournalEntry.id == entry_id, JournalEntry.user_id == current_user.id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Journal entry not found.")
+
+    if insight_type not in ["reflection", "mantra", "next_action"]:
+        raise HTTPException(status_code=400, detail="Invalid insight type.")
+
+    setattr(entry, insight_type, None)
+    db.commit()
+
+    return {"message": f"{insight_type} deleted."}
