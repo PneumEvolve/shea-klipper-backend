@@ -207,3 +207,19 @@ class Project(ProjectBase):
 
     class Config:
         orm_mode = True
+    
+class CommunityCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    visibility: str = "public"
+
+class CommunityOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str]
+    visibility: str
+    creator_id: int
+    created_at: datetime
+
+    class Config:
+        orm_mode = True

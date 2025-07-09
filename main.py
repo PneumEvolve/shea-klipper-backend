@@ -40,7 +40,8 @@ from routers import (
     garden,
     volunteers,
     blog,
-    projects
+    projects,
+    community
 )
 
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -134,3 +135,4 @@ app.include_router(garden.router)
 app.include_router(volunteers.router)
 app.include_router(blog.router)
 app.include_router(projects.router)
+app.include_router(community.router)

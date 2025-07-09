@@ -42,6 +42,9 @@ class User(Base):
     comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
     we_dream_entries = relationship("WeDreamEntry", back_populates="user")
     gardens = relationship("Garden", back_populates="host")
+    created_communities = relationship("Community", back_populates="creator", cascade="all, delete")
+    joined_communities = relationship("CommunityMember", back_populates="user", cascade="all, delete")
+    join_requests = relationship("JoinRequest", back_populates="user", cascade="all, delete")
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -334,3 +337,39 @@ class ProjectTask(Base):
     completed = Column(Boolean, default=False)
 
     project = relationship("Project", back_populates="tasks")
+
+class Community(Base):
+    __tablename__ = "communities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text)
+    visibility = Column(String, default="public")  # "public" or "private"
+    creator_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    creator = relationship("User", back_populates="created_communities")
+    members = relationship("CommunityMember", back_populates="community", cascade="all, delete")
+    join_requests = relationship("JoinRequest", back_populates="community", cascade="all, delete")
+
+class CommunityMember(Base):
+    __tablename__ = "community_members"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    community_id = Column(Integer, ForeignKey("communities.id"))
+    joined_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="joined_communities")
+    community = relationship("Community", back_populates="members")
+
+class JoinRequest(Base):
+    __tablename__ = "join_requests"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    community_id = Column(Integer, ForeignKey("communities.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="join_requests")
+    community = relationship("Community", back_populates="join_requests")
