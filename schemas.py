@@ -231,3 +231,8 @@ class CommunityMemberOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+class CommunityUpdate(BaseModel):
+    name: str
+    description: Optional[str]
+    visibility: str
