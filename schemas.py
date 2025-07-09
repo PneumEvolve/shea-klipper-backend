@@ -223,3 +223,11 @@ class CommunityOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+class CommunityMemberOut(BaseModel):
+    user_id: int
+    community_id: int
+    is_approved: bool
+
+    class Config:
+        orm_mode = True
