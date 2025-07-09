@@ -251,7 +251,7 @@ def decode_token_raw(token: str, db: Session) -> Optional[UserResponse]:
         return None
     
 @router.get("/account/me")
-def get_current_user(user: User = Depends(get_current_user_dependency)):
+def get_current_user(user: User = Depends(get_current_user_model)):
     return {
         "id": user.id,
         "email": user.email,
