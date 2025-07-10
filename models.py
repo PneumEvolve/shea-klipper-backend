@@ -321,12 +321,15 @@ class Project(Base):
     __tablename__ = "projects"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(Integer, ForeignKey("users.id"))  # Adjust to your user model
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Personal project owner
+    community_id = Column(Integer, ForeignKey("communities.id"), nullable=True)  # NEW
+
     name = Column(String, nullable=False)
     description = Column(Text, default="")
     links = Column(ARRAY(Text), default=[])
 
     tasks = relationship("ProjectTask", back_populates="project", cascade="all, delete-orphan")
+    community = relationship("Community", backref="projects")  # Optional: enables community.projects
 
 
 class ProjectTask(Base):
@@ -337,7 +340,35 @@ class ProjectTask(Base):
     content = Column(Text, nullable=False)
     completed = Column(Boolean, default=False)
 
+    assigned_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # NEW
+    status = Column(String, default="open")  # "open", "claimed", "completed"
+
     project = relationship("Project", back_populates="tasks")
+    assigned_user = relationship("User")  # Optional for now
+
+class CommunityProject(Base):
+    __tablename__ = "community_projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    community_id = Column(Integer, ForeignKey("communities.id"), nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+
+    tasks = relationship("CommunityProjectTask", back_populates="project", cascade="all, delete-orphan")
+    community = relationship("Community", backref="projects")
+
+
+class CommunityProjectTask(Base):
+    __tablename__ = "community_project_tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("community_projects.id"), nullable=False)
+    content = Column(String, nullable=False)
+    assigned_to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    completed = Column(Boolean, default=False)
+
+    project = relationship("CommunityProject", back_populates="tasks")
+    assigned_to = relationship("User", lazy="joined")
 
 class Community(Base):
     __tablename__ = "communities"

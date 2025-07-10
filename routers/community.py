@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Community, CommunityMember, User
-from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate
+from uuid import UUID
+from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask
+from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse
 from routers.auth import get_current_user_dependency
 from typing import List, Optional
 
@@ -198,3 +199,92 @@ def remove_member(
     db.commit()
     return {"detail": "Member removed"}
 
+
+
+@router.get("/{community_id}/projects", response_model=list[CommunityProjectResponse])
+def get_community_projects(community_id: int, db: Session = Depends(get_db)):
+    projects = db.query(CommunityProject).filter(CommunityProject.community_id == community_id).all()
+    return projects
+
+@router.post("/{community_id}/projects", response_model=CommunityProjectResponse)
+def create_community_project(
+    community_id: int,
+    project: CommunityProjectCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency)
+):
+    community = db.query(Community).filter(Community.id == community_id).first()
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    new_project = CommunityProject(
+        title=project.title,
+        description=project.description,
+        community_id=community_id
+    )
+    db.add(new_project)
+    db.commit()
+    db.refresh(new_project)
+    return new_project
+
+# ------------------------
+# PROJECT TASK ROUTES
+# ------------------------
+
+@router.get("/projects/{project_id}/tasks", response_model=list[CommunityProjectTaskResponse])
+def get_project_tasks(project_id: UUID, db: Session = Depends(get_db)):
+    tasks = db.query(CommunityProjectTask).filter(CommunityProjectTask.project_id == project_id).all()
+    return tasks
+
+@router.post("/projects/{project_id}/tasks", response_model=CommunityProjectTaskResponse)
+def create_project_task(
+    project_id: UUID,
+    task: CommunityProjectTaskCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency)
+):
+    project = db.query(CommunityProject).filter(CommunityProject.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    new_task = CommunityProjectTask(
+        project_id=project_id,
+        content=task.content
+    )
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return new_task
+
+@router.put("/tasks/{task_id}", response_model=CommunityProjectTaskResponse)
+def update_project_task(
+    task_id: UUID,
+    update: dict,  # Accepts {"completed": True} or {"assigned_user_id": 5}
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency)
+):
+    task = db.query(CommunityProjectTask).filter(CommunityProjectTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    for key, value in update.items():
+        if hasattr(task, key):
+            setattr(task, key, value)
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+@router.delete("/tasks/{task_id}")
+def delete_project_task(
+    task_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_dependency)
+):
+    task = db.query(CommunityProjectTask).filter(CommunityProjectTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    db.delete(task)
+    db.commit()
+    return {"detail": "Task deleted"}

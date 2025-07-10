@@ -239,3 +239,33 @@ class CommunityUpdate(BaseModel):
 
 class UsernameUpdate(BaseModel):
     username: str
+
+class CommunityProjectBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+
+class CommunityProjectCreate(CommunityProjectBase):
+    pass
+
+class CommunityProjectResponse(CommunityProjectBase):
+    id: UUID
+    community_id: int
+
+    class Config:
+        orm_mode = True
+
+
+class CommunityProjectTaskBase(BaseModel):
+    content: str
+
+class CommunityProjectTaskCreate(CommunityProjectTaskBase):
+    pass
+
+class CommunityProjectTaskResponse(CommunityProjectTaskBase):
+    id: UUID
+    project_id: UUID
+    completed: bool
+    assigned_user_id: Optional[int]
+
+    class Config:
+        orm_mode = True
