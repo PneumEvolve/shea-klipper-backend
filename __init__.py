@@ -1,0 +1,1 @@
+from .models import *  # This ensures models are loaded into metadata

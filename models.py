@@ -329,7 +329,7 @@ class Project(Base):
     links = Column(ARRAY(Text), default=[])
 
     tasks = relationship("ProjectTask", back_populates="project", cascade="all, delete-orphan")
-    community = relationship("Community", backref="projects")  # Optional: enables community.projects
+    community = relationship("Community", back_populates="user_projects")
 
 
 class ProjectTask(Base):
@@ -355,7 +355,8 @@ class CommunityProject(Base):
     description = Column(Text, nullable=True)
 
     tasks = relationship("CommunityProjectTask", back_populates="project", cascade="all, delete-orphan")
-    community = relationship("Community", backref="projects")
+    community = relationship("Community", back_populates="community_projects")
+
 
 
 class CommunityProjectTask(Base):
@@ -383,7 +384,9 @@ class Community(Base):
     creator = relationship("User", back_populates="created_communities")
     members = relationship("CommunityMember", back_populates="community", cascade="all, delete")
     join_requests = relationship("JoinRequest", back_populates="community", cascade="all, delete")
-
+    community_projects = relationship("CommunityProject", back_populates="community", cascade="all, delete")
+    user_projects = relationship("Project", back_populates="community", cascade="all, delete")
+    
 class CommunityMember(Base):
     __tablename__ = "community_members"
 
