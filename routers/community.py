@@ -287,7 +287,7 @@ def delete_project_task(
     db.commit()
     return {"detail": "Task deleted"}
 
-@router.get("/communities/{community_id}/full-members", response_model=List[UserInfo])
+@router.get("/{community_id}/full-members", response_model=List[UserInfo])
 def get_full_member_list(id: int, db: Session = Depends(get_db)):
     community = db.query(Community).filter(Community.id == id).first()
     if not community:
