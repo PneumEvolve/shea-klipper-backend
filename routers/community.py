@@ -13,10 +13,9 @@ router = APIRouter(prefix="/communities", tags=["communities"])
 @router.post("/create", response_model=CommunityOut)
 def create_community(
     data: CommunityCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency)
+    current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
-    # Create the community
+    current_user, db = current
     new_community = Community(
         name=data.name,
         description=data.description,
@@ -27,7 +26,6 @@ def create_community(
     db.commit()
     db.refresh(new_community)
 
-    # Add creator as a member
     member = CommunityMember(user_id=current_user.id, community_id=new_community.id)
     db.add(member)
     db.commit()
@@ -35,18 +33,16 @@ def create_community(
     return new_community
 
 @router.get("/list", response_model=List[CommunityOut])
-def get_communities(
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user_dependency)
-):
+def get_communities(current: Tuple[User, Session] = Depends(get_current_user_with_db)):
+    _, db = current
     return db.query(Community).all()
 
 @router.get("/{community_id}", response_model=CommunityOut)
 def get_community_by_id(
     community_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user_dependency)
+    current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
+    _, db = current
     community = db.query(Community).filter(Community.id == community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
@@ -56,9 +52,9 @@ def get_community_by_id(
 def update_community(
     community_id: int,
     update_data: CommunityUpdate,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user_dependency),
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
+    current_user, db = current
     community = db.query(Community).filter(Community.id == community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
@@ -73,13 +69,12 @@ def update_community(
     db.refresh(community)
     return community
 
-# Request to join a community
 @router.post("/{community_id}/join")
 def request_to_join_community(
     community_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency),
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
+    current_user, db = current
     existing = db.query(CommunityMember).filter_by(
         user_id=current_user.id, community_id=community_id
     ).first()
@@ -90,22 +85,20 @@ def request_to_join_community(
     new_request = CommunityMember(
         user_id=current_user.id,
         community_id=community_id,
-        is_approved=False  # Pending
+        is_approved=False
     )
     db.add(new_request)
     db.commit()
     return {"message": "Join request submitted."}
 
-
-# Approve or reject member (admin only)
 @router.post("/{community_id}/members/{user_id}/approve")
 def approve_member(
     community_id: int,
     user_id: int,
     approve: Optional[bool] = True,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency),
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
+    current_user, db = current
     community = db.query(Community).filter_by(id=community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
@@ -126,27 +119,23 @@ def approve_member(
     db.commit()
     return {"status": "updated"}
 
-
-# Get member list (approved only)
 @router.get("/{community_id}/members", response_model=List[CommunityMemberOut])
 def get_members(
     community_id: int,
     current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
-    current_user, db = current
+    _, db = current
     return db.query(CommunityMember).filter_by(
         community_id=community_id,
         is_approved=True
     ).all()
 
-
-# Get pending join requests (admin only)
 @router.get("/{community_id}/join-requests", response_model=List[CommunityMemberOut])
 def get_pending_requests(
     community_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency),
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
+    current_user, db = current
     community = db.query(Community).filter_by(id=community_id).first()
     if not community or community.creator_id != current_user.id:
         raise HTTPException(status_code=403, detail="Unauthorized")
@@ -158,9 +147,9 @@ def get_pending_requests(
 @router.delete("/{community_id}")
 def delete_community(
     community_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency),
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
+    current_user, db = current
     community = db.query(Community).filter_by(id=community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
@@ -168,7 +157,6 @@ def delete_community(
     if community.creator_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the creator can delete this community")
 
-    # Delete all associated members
     db.query(CommunityMember).filter_by(community_id=community_id).delete()
 
     db.delete(community)
@@ -179,9 +167,9 @@ def delete_community(
 def remove_member(
     community_id: int,
     user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency),
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
+    current_user, db = current
     community = db.query(Community).filter_by(id=community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
@@ -200,9 +188,11 @@ def remove_member(
     db.commit()
     return {"detail": "Member removed"}
 
-
 @router.get("/{community_id}/projects", response_model=list[CommunityProjectResponse])
-def get_community_projects(community_id: int, db: Session = Depends(get_db)):
+def get_community_projects(
+    community_id: int,
+    db: Session = Depends(get_db)
+):
     projects = db.query(CommunityProject).filter(CommunityProject.community_id == community_id).all()
     return projects
 
@@ -210,9 +200,9 @@ def get_community_projects(community_id: int, db: Session = Depends(get_db)):
 def create_community_project(
     community_id: int,
     project: CommunityProjectCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency)
+    current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
+    _, db = current
     community = db.query(Community).filter(Community.id == community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
@@ -227,12 +217,11 @@ def create_community_project(
     db.refresh(new_project)
     return new_project
 
-# ------------------------
-# PROJECT TASK ROUTES
-# ------------------------
-
 @router.get("/projects/{project_id}/tasks", response_model=list[CommunityProjectTaskResponse])
-def get_project_tasks(project_id: int, db: Session = Depends(get_db)):
+def get_project_tasks(
+    project_id: int,
+    db: Session = Depends(get_db)
+):
     tasks = db.query(CommunityProjectTask).filter(CommunityProjectTask.project_id == project_id).all()
     return tasks
 
@@ -240,9 +229,9 @@ def get_project_tasks(project_id: int, db: Session = Depends(get_db)):
 def create_project_task(
     project_id: int,
     task: CommunityProjectTaskCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency)
+    current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
+    _, db = current
     project = db.query(CommunityProject).filter(CommunityProject.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -260,9 +249,9 @@ def create_project_task(
 def update_project_task(
     task_id: int,
     update: TaskUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency)
+    current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
+    _, db = current
     task = db.query(CommunityProjectTask).filter(CommunityProjectTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -277,9 +266,9 @@ def update_project_task(
 @router.delete("/tasks/{task_id}")
 def delete_project_task(
     task_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency)
+    current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
+    _, db = current
     task = db.query(CommunityProjectTask).filter(CommunityProjectTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -289,14 +278,15 @@ def delete_project_task(
     return {"detail": "Task deleted"}
 
 @router.get("/{community_id}/full-members", response_model=List[UserInfo])
-def get_full_member_list(community_id: int, db: Session = Depends(get_db)):
+def get_full_member_list(
+    community_id: int,
+    db: Session = Depends(get_db)
+):
     community = db.query(Community).filter(Community.id == community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
 
     creator_id = community.creator_id
-
-    # Get approved members
     approved_members = db.query(CommunityMember).filter(
         CommunityMember.community_id == community_id,
         CommunityMember.is_approved == True
@@ -310,11 +300,11 @@ def get_full_member_list(community_id: int, db: Session = Depends(get_db)):
     result = []
     for user in users:
         result.append({
-    "user_id": user.id,
-    "id": user.id,  # Required for Pydantic base model inheritance
-    "username": user.username,
-    "email": user.email,
-    "is_creator": user.id == creator_id
-})
+            "user_id": user.id,
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "is_creator": user.id == creator_id
+        })
 
     return result
