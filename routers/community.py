@@ -4,7 +4,7 @@ from database import get_db
 from uuid import UUID
 from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask
 from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo
-from routers.auth import get_current_user_dependency
+from routers.auth import get_current_user_dependency, get_current_user_model
 from typing import List, Optional
 
 router = APIRouter(prefix="/communities", tags=["communities"])

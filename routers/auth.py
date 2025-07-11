@@ -18,6 +18,7 @@ from models import Category, user_categories, User
 from sqlalchemy import text
 from database import get_db
 from schemas import UsernameUpdate
+from jose import JWTError
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
