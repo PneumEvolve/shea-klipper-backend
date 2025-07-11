@@ -232,7 +232,7 @@ def create_community_project(
 # ------------------------
 
 @router.get("/projects/{project_id}/tasks", response_model=list[CommunityProjectTaskResponse])
-def get_project_tasks(project_id: UUID, db: Session = Depends(get_db)):
+def get_project_tasks(project_id: int, db: Session = Depends(get_db)):
     tasks = db.query(CommunityProjectTask).filter(CommunityProjectTask.project_id == project_id).all()
     return tasks
 

@@ -262,7 +262,7 @@ class CommunityProjectTaskCreate(CommunityProjectTaskBase):
     pass
 
 class CommunityProjectTaskResponse(CommunityProjectTaskBase):
-    id: int
+    id: UUID
     project_id: int
     completed: bool
     assigned_to_user_id: Optional[int]
