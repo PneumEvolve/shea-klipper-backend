@@ -17,9 +17,19 @@ class UserResponse(BaseModel):
     id: int
     email: EmailStr
     username: str | None = None
+    
 
     class Config:
         from_attributes = True  # ✅ Fix for Pydantic V2
+
+class UserInfo(UserResponse):
+    user_id: int
+    username: Optional[str]
+    email: EmailStr
+    is_creator: bool
+
+    class Config:
+        from_attributes = True
 
 # Transcription Schema
 class TranscriptionCreate(BaseModel):
