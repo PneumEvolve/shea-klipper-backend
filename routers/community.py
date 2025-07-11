@@ -309,10 +309,11 @@ def get_full_member_list(community_id: int, db: Session = Depends(get_db)):
     result = []
     for user in users:
         result.append({
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "is_creator": user.id == creator_id
-        })
+    "user_id": user.id,
+    "id": user.id,  # Required for Pydantic base model inheritance
+    "username": user.username,
+    "email": user.email,
+    "is_creator": user.id == creator_id
+})
 
     return result
