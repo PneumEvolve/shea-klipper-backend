@@ -132,7 +132,7 @@ def approve_member(
 def get_members(
     community_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_dependency),
+    current_user: User = Depends(get_current_user_model),
 ):
     return db.query(CommunityMember).filter_by(
         community_id=community_id, is_approved=True
