@@ -13,7 +13,7 @@ DATABASE_URL = f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}?
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-engine = create_engine(DATABASE_URL, pool_size=10, max_overflow=20)
+engine = create_engine(DATABASE_URL, pool_size=2, max_overflow=20)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 

@@ -199,6 +199,36 @@ def remove_member(
     db.commit()
     return {"detail": "Member removed"}
 
+@router.get("/communities/{id}/full-members", response_model=List[UserInfo])
+def get_full_member_list(id: int, db: Session = Depends(get_db)):
+    community = db.query(Community).filter(Community.id == id).first()
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    creator_id = community.creator_id
+
+    # Get approved members
+    approved_members = db.query(CommunityMember).filter(
+        CommunityMember.community_id == id,
+        CommunityMember.approved == True
+    ).all()
+
+    user_ids = set([m.user_id for m in approved_members])
+    user_ids.add(creator_id)
+
+    users = db.query(User).filter(User.id.in_(user_ids)).all()
+
+    result = []
+    for user in users:
+        result.append({
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "is_creator": user.id == creator_id
+        })
+
+    return result
+
 
 
 @router.get("/{community_id}/projects", response_model=list[CommunityProjectResponse])
