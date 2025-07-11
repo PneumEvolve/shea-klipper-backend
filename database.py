@@ -1,6 +1,12 @@
 import os
 from dotenv import load_dotenv
 load_dotenv()
+import logging
+from contextlib import contextmanager
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("database")
 
 USER = os.getenv("user")
 PASSWORD = os.getenv("password")
@@ -20,7 +26,9 @@ Base = declarative_base()
 # Dependency to get DB session
 def get_db():
     db = SessionLocal()
+    logger.info("📥 Opened DB connection")
     try:
         yield db
     finally:
         db.close()
+        logger.info("📤 Closed DB connection")
