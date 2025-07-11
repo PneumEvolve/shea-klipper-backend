@@ -269,3 +269,7 @@ class CommunityProjectTaskResponse(CommunityProjectTaskBase):
 
     class Config:
         orm_mode = True
+
+class TaskUpdate(BaseModel):
+    completed: Optional[bool] = None
+    assigned_user_id: Optional[int] = None

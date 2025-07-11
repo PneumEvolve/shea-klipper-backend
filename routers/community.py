@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from uuid import UUID
 from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask
-from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse
+from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate
 from routers.auth import get_current_user_dependency
 from typing import List, Optional
 
@@ -259,7 +259,7 @@ def create_project_task(
 @router.put("/tasks/{task_id}", response_model=CommunityProjectTaskResponse)
 def update_project_task(
     task_id: UUID,
-    update: dict,  # Accepts {"completed": True} or {"assigned_user_id": 5}
+    update: TaskUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dependency)
 ):
@@ -267,9 +267,8 @@ def update_project_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    for key, value in update.items():
-        if hasattr(task, key):
-            setattr(task, key, value)
+    for key, value in update.dict(exclude_unset=True).items():
+        setattr(task, key, value)
 
     db.commit()
     db.refresh(task)
