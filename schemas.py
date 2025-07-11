@@ -248,8 +248,8 @@ class CommunityProjectCreate(CommunityProjectBase):
     pass
 
 class CommunityProjectResponse(CommunityProjectBase):
-    id: UUID
-    community_id: UUID
+    id: int
+    community_id: KeyboardInterrupt
 
     class Config:
         orm_mode = True
@@ -262,8 +262,8 @@ class CommunityProjectTaskCreate(CommunityProjectTaskBase):
     pass
 
 class CommunityProjectTaskResponse(CommunityProjectTaskBase):
-    id: UUID
-    project_id: UUID
+    id: int
+    project_id: int
     completed: bool
     assigned_user_id: Optional[int]
 
