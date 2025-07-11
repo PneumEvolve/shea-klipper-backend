@@ -288,8 +288,8 @@ def delete_project_task(
     return {"detail": "Task deleted"}
 
 @router.get("/{community_id}/full-members", response_model=List[UserInfo])
-def get_full_member_list(id: int, db: Session = Depends(get_db)):
-    community = db.query(Community).filter(Community.id == id).first()
+def get_full_member_list(community_id: int, db: Session = Depends(get_db)):
+    community = db.query(Community).filter(Community.id == community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
 
@@ -297,7 +297,7 @@ def get_full_member_list(id: int, db: Session = Depends(get_db)):
 
     # Get approved members
     approved_members = db.query(CommunityMember).filter(
-        CommunityMember.community_id == id,
+        CommunityMember.community_id == community_id,
         CommunityMember.approved == True
     ).all()
 
