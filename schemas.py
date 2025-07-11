@@ -260,6 +260,7 @@ class CommunityProjectCreate(CommunityProjectBase):
 class CommunityProjectResponse(CommunityProjectBase):
     id: int
     community_id: int
+    creator_id: int
 
     class Config:
         orm_mode = True
@@ -276,6 +277,7 @@ class CommunityProjectTaskResponse(CommunityProjectTaskBase):
     project_id: int
     completed: bool
     assigned_to_user_id: Optional[int]
+    creator_id: int
 
     class Config:
         orm_mode = True

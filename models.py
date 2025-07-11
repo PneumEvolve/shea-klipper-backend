@@ -353,6 +353,7 @@ class CommunityProject(Base):
     community_id = Column(Integer, ForeignKey("communities.id"), nullable=False)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
+    creator_id = Column(Integer, ForeignKey("users.id"))
 
     tasks = relationship("CommunityProjectTask", back_populates="project", cascade="all, delete-orphan")
     community = relationship("Community", back_populates="community_projects")
@@ -366,6 +367,7 @@ class CommunityProjectTask(Base):
     project_id = Column(Integer, ForeignKey("community_projects.id"), nullable=False)
     content = Column(String, nullable=False)
     assigned_to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    creator_id = Column(Integer, ForeignKey("users.id"))
     completed = Column(Boolean, default=False)
 
     project = relationship("CommunityProject", back_populates="tasks")
