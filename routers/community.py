@@ -219,6 +219,24 @@ def create_community_project(
     db.refresh(new_project)
     return new_project
 
+@router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_community_project(
+    project_id: int,
+    current: Tuple[User, Session] = Depends(get_current_user_with_db)
+):
+    current_user, db = current
+    project = db.query(CommunityProject).filter(CommunityProject.id == project_id).first()
+
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if project.creator_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this project")
+
+    db.delete(project)
+    db.commit()
+    return
+
 @router.get("/projects/{project_id}/tasks", response_model=list[CommunityProjectTaskResponse])
 def get_project_tasks(
     project_id: int,
