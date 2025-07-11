@@ -249,7 +249,7 @@ class CommunityProjectCreate(CommunityProjectBase):
 
 class CommunityProjectResponse(CommunityProjectBase):
     id: int
-    community_id: KeyboardInterrupt
+    community_id: int
 
     class Config:
         orm_mode = True
