@@ -208,7 +208,7 @@ def get_community_projects(community_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{community_id}/projects", response_model=CommunityProjectResponse)
 def create_community_project(
-    community_id: UUID,
+    community_id: int,
     project: CommunityProjectCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dependency)
@@ -238,7 +238,7 @@ def get_project_tasks(project_id: UUID, db: Session = Depends(get_db)):
 
 @router.post("/projects/{project_id}/tasks", response_model=CommunityProjectTaskResponse)
 def create_project_task(
-    project_id: UUID,
+    project_id: int,
     task: CommunityProjectTaskCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dependency)
