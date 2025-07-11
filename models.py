@@ -409,3 +409,14 @@ class JoinRequest(Base):
 
     user = relationship("User", back_populates="join_requests")
     community = relationship("Community", back_populates="join_requests")
+
+class CommunityChatMessage(Base):
+    __tablename__ = "community_chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    community_id = Column(Integer, ForeignKey("communities.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")

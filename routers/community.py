@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from database import get_db
 from uuid import UUID
-from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask
-from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo
+from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage
+from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage
 from routers.auth import get_current_user_dependency, get_current_user_model, get_current_user_with_db
 from typing import List, Optional, Tuple
+from datetime import datetime
 
 router = APIRouter(prefix="/communities", tags=["communities"])
 
@@ -308,3 +309,79 @@ def get_full_member_list(
         })
 
     return result
+
+@router.post("/{community_id}/chat", response_model=ChatMessage)
+def post_message(
+    community_id: int,
+    data: ChatMessageCreate,
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
+):
+    user, db = current
+
+    community = db.query(Community).filter(Community.id == community_id).first()
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    new_msg = CommunityChatMessage(
+        community_id=community_id,
+        user_id=user.id,
+        content=data.content,
+        timestamp=datetime.utcnow()
+    )
+    db.add(new_msg)
+    db.commit()
+    db.refresh(new_msg)
+
+    return ChatMessage(
+        id=new_msg.id,
+        user_id=user.id,
+        username=user.username,
+        content=new_msg.content,
+        timestamp=new_msg.timestamp
+    )
+
+@router.get("/{community_id}/chat", response_model=List[ChatMessage])
+def get_messages(
+    community_id: int,
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
+):
+    _, db = current
+    messages = (
+        db.query(CommunityChatMessage)
+        .filter(CommunityChatMessage.community_id == community_id)
+        .order_by(CommunityChatMessage.timestamp.desc())
+        .limit(50)
+        .all()
+    )
+
+    result = []
+    for msg in reversed(messages):  # Show oldest first
+        result.append(
+            ChatMessage(
+                id=msg.id,
+                user_id=msg.user_id,
+                username=msg.user.username,
+                content=msg.content,
+                timestamp=msg.timestamp
+            )
+        )
+    return result
+
+@router.delete("/{community_id}/chat/{message_id}")
+def delete_message(
+    community_id: int,
+    message_id: int,
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
+):
+    user, db = current
+    message = db.query(CommunityChatMessage).filter_by(id=message_id, community_id=community_id).first()
+
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if message.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    db.delete(message)
+    db.commit()
+    return {"detail": "Message deleted"}

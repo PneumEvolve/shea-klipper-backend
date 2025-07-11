@@ -283,3 +283,18 @@ class CommunityProjectTaskResponse(CommunityProjectTaskBase):
 class TaskUpdate(BaseModel):
     completed: Optional[bool] = None
     assigned_user_id: Optional[int] = None
+
+class ChatMessageBase(BaseModel):
+    content: str
+
+class ChatMessageCreate(ChatMessageBase):
+    pass
+
+class ChatMessage(ChatMessageBase):
+    id: int
+    user_id: int
+    username: str
+    timestamp: datetime
+
+    class Config:
+        orm_mode = True
