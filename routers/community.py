@@ -298,7 +298,7 @@ def get_full_member_list(community_id: int, db: Session = Depends(get_db)):
     # Get approved members
     approved_members = db.query(CommunityMember).filter(
         CommunityMember.community_id == community_id,
-        CommunityMember.approved == True
+        CommunityMember.is_approved == True
     ).all()
 
     user_ids = set([m.user_id for m in approved_members])
