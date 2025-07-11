@@ -309,7 +309,7 @@ def get_full_member_list(community_id: int, db: Session = Depends(get_db)):
     result = []
     for user in users:
         result.append({
-            "user_id": user.id,
+            "id": user.id,
             "username": user.username,
             "email": user.email,
             "is_creator": user.id == creator_id
