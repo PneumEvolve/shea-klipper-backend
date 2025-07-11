@@ -212,6 +212,7 @@ def create_community_project(
         title=project.title,
         description=project.description,
         community_id=community_id
+        creator_id=current_user.id
     )
     db.add(new_project)
     db.commit()
@@ -240,6 +241,7 @@ def create_project_task(
     new_task = CommunityProjectTask(
         project_id=project_id,
         content=task.content
+        creator_id=user.id
     )
     db.add(new_task)
     db.commit()

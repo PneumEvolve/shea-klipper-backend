@@ -371,7 +371,7 @@ class CommunityProjectTask(Base):
     completed = Column(Boolean, default=False)
 
     project = relationship("CommunityProject", back_populates="tasks")
-    assigned_to = relationship("User", lazy="joined")
+    assigned_to = relationship("User", foreign_keys=[assigned_to_user_id])
 
 class Community(Base):
     __tablename__ = "communities"
