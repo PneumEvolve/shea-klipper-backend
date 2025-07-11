@@ -265,7 +265,7 @@ class CommunityProjectTaskResponse(CommunityProjectTaskBase):
     id: int
     project_id: int
     completed: bool
-    assigned_user_id: Optional[int]
+    assigned_to_user_id: Optional[int]
 
     class Config:
         orm_mode = True
