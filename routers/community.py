@@ -258,7 +258,7 @@ def create_project_task(
 
 @router.put("/tasks/{task_id}", response_model=CommunityProjectTaskResponse)
 def update_project_task(
-    task_id: UUID,
+    task_id: int,
     update: TaskUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dependency)
@@ -276,7 +276,7 @@ def update_project_task(
 
 @router.delete("/tasks/{task_id}")
 def delete_project_task(
-    task_id: UUID,
+    task_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dependency)
 ):
