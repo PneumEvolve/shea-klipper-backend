@@ -4,8 +4,8 @@ from database import get_db
 from uuid import UUID
 from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask
 from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo
-from routers.auth import get_current_user_dependency, get_current_user_model
-from typing import List, Optional
+from routers.auth import get_current_user_dependency, get_current_user_model, get_current_user_with_db
+from typing import List, Optional, Tuple
 
 router = APIRouter(prefix="/communities", tags=["communities"])
 
@@ -131,11 +131,12 @@ def approve_member(
 @router.get("/{community_id}/members", response_model=List[CommunityMemberOut])
 def get_members(
     community_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_model),
+    current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
+    current_user, db = current
     return db.query(CommunityMember).filter_by(
-        community_id=community_id, is_approved=True
+        community_id=community_id,
+        is_approved=True
     ).all()
 
 

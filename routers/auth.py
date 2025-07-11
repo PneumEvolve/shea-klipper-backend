@@ -11,7 +11,7 @@ import requests
 from dotenv import load_dotenv
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 from utils.email import send_email
 from schemas import UserResponse, UserCreate
 from models import Category, user_categories, User
@@ -170,18 +170,30 @@ def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Sessio
         raise HTTPException(status_code=401, detail="Invalid token")
 
 def get_current_user_model(
-    db: Session = Depends(get_db),
     token: str = Security(oauth2_scheme),
+    db: Session = Depends(get_db),
 ) -> User:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("id")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid authentication")
-        user = db.query(User).filter(User.id == user_id).first()
+        user = db.query(User).filter(User.id == payload.get("id")).first()
         if not user:
-            raise HTTPException(status_code=401, detail="User not found")
+            raise HTTPException(status_code=401, detail="Invalid authentication")
         return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+def get_current_user_with_db(
+    token: str = Security(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> Tuple[User, Session]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user = db.query(User).filter(User.id == payload.get("id")).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+        return user, db
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except JWTError:
