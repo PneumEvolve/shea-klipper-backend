@@ -208,7 +208,7 @@ def get_community_projects(community_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{community_id}/projects", response_model=CommunityProjectResponse)
 def create_community_project(
-    community_id: int,
+    community_id: UUID,
     project: CommunityProjectCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_dependency)

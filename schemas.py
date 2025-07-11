@@ -249,7 +249,7 @@ class CommunityProjectCreate(CommunityProjectBase):
 
 class CommunityProjectResponse(CommunityProjectBase):
     id: UUID
-    community_id: int
+    community_id: UUID
 
     class Config:
         orm_mode = True
