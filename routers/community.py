@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from uuid import UUID
 from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage
-from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage
+from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate
 from routers.auth import get_current_user_dependency, get_current_user_model, get_current_user_with_db
 from typing import List, Optional, Tuple
 from datetime import datetime
