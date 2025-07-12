@@ -276,13 +276,23 @@ class CommunityProjectTaskBase(BaseModel):
 class CommunityProjectTaskCreate(CommunityProjectTaskBase):
     pass
 
+class UserSimple(BaseModel):
+    id: int
+    username: str
+
+    class Config:
+        orm_mode = True
+
 class CommunityProjectTaskResponse(CommunityProjectTaskBase):
     id: int
     project_id: int
     completed: bool
+    creator_id: int
     assigned_to_user_id: Optional[int]
     completed_by_user_id: Optional[int] = None
-    creator_id: int
+
+    assigned_to: Optional[UserSimple] = None
+    completed_by: Optional[UserSimple] = None
 
     class Config:
         orm_mode = True
