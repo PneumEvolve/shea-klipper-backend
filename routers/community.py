@@ -298,7 +298,7 @@ def update_project_task(
             task.completed_by_user_id = None
 
     # Handle general updates
-    for key, value in update.dict(exclude_unset=True):
+    for key, value in update.dict(exclude_unset=True).items():
         if key not in ["assigned_to_user_id", "completed"]:  # Already handled
             setattr(task, key, value)
 
