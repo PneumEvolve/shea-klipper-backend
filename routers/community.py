@@ -190,9 +190,14 @@ def remove_member(
     return {"detail": "Member removed"}
 
 
-@router.put("/communities/{community_id}/members/{user_id}/toggle-admin", response_model=CommunityMemberOut)
-def toggle_admin_status(community_id: int, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    membership = db.query(models.CommunityMembership).filter_by(
+@router.put("/{community_id}/members/{user_id}/toggle-admin", response_model=CommunityMemberOut)
+def toggle_admin_status(
+    community_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_model)
+):
+    membership = db.query(CommunityMember).filter_by(
         community_id=community_id,
         user_id=current_user.id
     ).first()
@@ -200,7 +205,7 @@ def toggle_admin_status(community_id: int, user_id: int, db: Session = Depends(g
     if not membership or not membership.is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    target = db.query(models.CommunityMembership).filter_by(
+    target = db.query(CommunityMember).filter_by(
         community_id=community_id,
         user_id=user_id
     ).first()
