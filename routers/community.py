@@ -277,11 +277,30 @@ def update_project_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    for key, value in update.dict(exclude_unset=True).items():
-        setattr(task, key, value)
+    # Handle assignment toggling
+    if update.assigned_to_user_id is not None:
+        if task.assigned_to_user_id is None:
+            # Assign to current user
+            task.assigned_to_user_id = user.id
+        elif task.assigned_to_user_id == user.id:
+            # Unassign self
+            task.assigned_to_user_id = None
+        else:
+            # Another user is already assigned
+            raise HTTPException(status_code=403, detail="Task is already assigned to another user")
 
-    if update.completed is True and not task.completed_by_user_id:
-        task.completed_by_user_id = user.id
+    # Handle completion
+    if update.completed is not None:
+        task.completed = update.completed
+        if update.completed is True and not task.completed_by_user_id:
+            task.completed_by_user_id = user.id
+        elif update.completed is False and task.completed_by_user_id == user.id:
+            task.completed_by_user_id = None
+
+    # Handle general updates
+    for key, value in update.dict(exclude_unset=True):
+        if key not in ["assigned_to_user_id", "completed"]:  # Already handled
+            setattr(task, key, value)
 
     db.commit()
     db.refresh(task)
