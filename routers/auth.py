@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Security, Request, Response
+from fastapi import APIRouter, HTTPException, Depends, Security, Request, Response, UploadFile, File
 from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import jwt
@@ -23,6 +23,9 @@ from jose import JWTError
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 router = APIRouter()
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
 RECAPTCHA_SECRET = os.getenv("RECAPTCHA_SECRET")
 SECRET_KEY = os.getenv("SECRET_KEY", "fallback-secret")
@@ -294,12 +297,39 @@ def update_username(
     db.refresh(current_user)
     return {"username": current_user.username}
 
-@router.put("/account/profile-pic")
-def update_profile_pic(
-    payload: ProfilePicUpdate,
-    db: Session = Depends(get_db),
+@router.post("/account/upload-profile-pic")
+def upload_profile_pic(
+    file: UploadFile = File(...),
     current_user: User = Depends(get_current_user_model),
+    db: Session = Depends(get_db),
 ):
-    current_user.profile_pic = payload.imageUrl
+    # Construct upload path
+    ext = file.filename.split('.')[-1]
+    path = f"avatars/{current_user.id}.{ext}"
+
+    # Read file content
+    content = file.file.read()
+
+    # Upload to Supabase
+    headers = {
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "Content-Type": "application/octet-stream",
+        "x-upsert": "true"
+    }
+
+    response = requests.post(
+        f"{SUPABASE_URL}/storage/v1/object/{path}",
+        headers=headers,
+        data=content
+    )
+
+    if response.status_code != 200:
+        print("Upload failed:", response.text)
+        raise HTTPException(status_code=500, detail="Failed to upload profile picture")
+
+    # Public URL
+    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{path}"
+    current_user.profile_pic = public_url
     db.commit()
-    return {"message": "Profile picture updated", "profile_pic": current_user.profile_pic}
+
+    return {"profile_pic": public_url}
