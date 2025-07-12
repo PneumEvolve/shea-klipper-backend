@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 from typing import Optional, Tuple
 from utils.email import send_email
-from schemas import UserResponse, UserCreate
+from schemas import UserResponse, UserCreate, ProfilePicUpdate
 from models import Category, user_categories, User
 from sqlalchemy import text
 from database import get_db
