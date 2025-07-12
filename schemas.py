@@ -258,6 +258,10 @@ class CommunityProjectBase(BaseModel):
     title: str
     description: Optional[str] = None
 
+class CommunityProjectUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+
 class CommunityProjectCreate(CommunityProjectBase):
     pass
 
