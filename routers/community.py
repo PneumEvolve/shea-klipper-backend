@@ -273,19 +273,19 @@ def update_project_task(
     current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
     user, db = current
-task = db.query(CommunityProjectTask).filter(CommunityProjectTask.id == task_id).first()
-if not task:
-    raise HTTPException(status_code=404, detail="Task not found")
+    task = db.query(CommunityProjectTask).filter(CommunityProjectTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
 
-for key, value in update.dict(exclude_unset=True).items():
-    setattr(task, key, value)
+    for key, value in update.dict(exclude_unset=True).items():
+        setattr(task, key, value)
 
-if update.completed is True and not task.completed_by_user_id:
-    task.completed_by_user_id = user.id
+    if update.completed is True and not task.completed_by_user_id:
+        task.completed_by_user_id = user.id
 
-db.commit()
-db.refresh(task)
-return task
+    db.commit()
+    db.refresh(task)
+    return task
 
 @router.delete("/tasks/{task_id}")
 def delete_project_task(
