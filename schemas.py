@@ -239,6 +239,7 @@ class CommunityMemberOut(BaseModel):
     user_id: int
     community_id: int
     is_approved: bool
+    is_admin: bool
 
     class Config:
         orm_mode = True

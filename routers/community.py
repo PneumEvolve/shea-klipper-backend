@@ -189,6 +189,30 @@ def remove_member(
     db.commit()
     return {"detail": "Member removed"}
 
+
+@router.put("/communities/{community_id}/members/{user_id}/toggle-admin", response_model=schemas.CommunityMember)
+def toggle_admin_status(community_id: int, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    membership = db.query(models.CommunityMembership).filter_by(
+        community_id=community_id,
+        user_id=current_user.id
+    ).first()
+
+    if not membership or not membership.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    target = db.query(models.CommunityMembership).filter_by(
+        community_id=community_id,
+        user_id=user_id
+    ).first()
+
+    if not target:
+        raise HTTPException(status_code=404, detail="User not a member of this community")
+
+    target.is_admin = not target.is_admin
+    db.commit()
+    db.refresh(target)
+    return target
+
 @router.get("/{community_id}/projects", response_model=list[CommunityProjectResponse])
 def get_community_projects(
     community_id: int,
