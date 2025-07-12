@@ -190,7 +190,7 @@ def remove_member(
     return {"detail": "Member removed"}
 
 
-@router.put("/communities/{community_id}/members/{user_id}/toggle-admin", response_model=schemas.CommunityMember)
+@router.put("/communities/{community_id}/members/{user_id}/toggle-admin", response_model=CommunityMemberOut)
 def toggle_admin_status(community_id: int, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     membership = db.query(models.CommunityMembership).filter_by(
         community_id=community_id,
