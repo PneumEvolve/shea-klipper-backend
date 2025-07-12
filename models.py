@@ -367,12 +367,17 @@ class CommunityProjectTask(Base):
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("community_projects.id"), nullable=False)
     content = Column(String, nullable=False)
-    assigned_to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     creator_id = Column(Integer, ForeignKey("users.id"))
     completed = Column(Boolean, default=False)
 
+    assigned_to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    completed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # Relationships
     project = relationship("CommunityProject", back_populates="tasks")
+    creator = relationship("User", foreign_keys=[creator_id])
     assigned_to = relationship("User", foreign_keys=[assigned_to_user_id])
+    completed_by = relationship("User", foreign_keys=[completed_by_user_id])
 
 class Community(Base):
     __tablename__ = "communities"

@@ -278,7 +278,10 @@ def update_project_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     for key, value in update.dict(exclude_unset=True).items():
-        setattr(task, key, value)
+    setattr(task, key, value)
+
+if update.completed is True and not task.completed_by_user_id:
+    task.completed_by_user_id = current_user.id
 
     db.commit()
     db.refresh(task)

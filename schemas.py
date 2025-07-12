@@ -281,14 +281,17 @@ class CommunityProjectTaskResponse(CommunityProjectTaskBase):
     project_id: int
     completed: bool
     assigned_to_user_id: Optional[int]
+    completed_by_user_id: Optional[int] = None
     creator_id: int
 
     class Config:
         orm_mode = True
 
 class TaskUpdate(BaseModel):
+    content: Optional[str] = None
     completed: Optional[bool] = None
-    assigned_user_id: Optional[int] = None
+    assigned_to_user_id: Optional[int] = None
+    completed_by_user_id: Optional[int] = None
 
 class ChatMessageBase(BaseModel):
     content: str
