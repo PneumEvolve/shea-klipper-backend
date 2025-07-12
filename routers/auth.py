@@ -275,6 +275,7 @@ def get_current_user(user: User = Depends(get_current_user_model)):
         "id": user.id,
         "email": user.email,
         "username": user.username,
+        "profile_pic": user.profile_pic,
     }
 
 @router.put("/account/username")
@@ -292,3 +293,13 @@ def update_username(
     db.commit()
     db.refresh(current_user)
     return {"username": current_user.username}
+
+@router.put("/account/profile-pic")
+def update_profile_pic(
+    payload: ProfilePicUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_model),
+):
+    current_user.profile_pic = payload.imageUrl
+    db.commit()
+    return {"message": "Profile picture updated", "profile_pic": current_user.profile_pic}

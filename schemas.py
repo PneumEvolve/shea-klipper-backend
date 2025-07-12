@@ -17,6 +17,7 @@ class UserResponse(BaseModel):
     id: int
     email: EmailStr
     username: str | None = None
+    profile_pic: Optional[str] = None
     
 
     class Config:
@@ -249,6 +250,9 @@ class CommunityUpdate(BaseModel):
 
 class UsernameUpdate(BaseModel):
     username: str
+
+class ProfilePicUpdate(BaseModel):
+    imageUrl: str
 
 class CommunityProjectBase(BaseModel):
     title: str

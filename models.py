@@ -29,6 +29,7 @@ class User(Base):
     username = Column(String, unique=True, nullable=True)
     has_active_payment = Column(Boolean, default=False)
     api_balance_dollars = Column(Float, default=0.0)
+    profile_pic = Column(String, nullable=True)
 
     payments = relationship("Payment", back_populates="user")
     transcription_usages = relationship("TranscriptionUsage", back_populates="user")
