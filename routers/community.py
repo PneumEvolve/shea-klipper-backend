@@ -224,25 +224,6 @@ def get_pending_requests(
         .all()
     )
 
-@router.delete("/{community_id}")
-def delete_community(
-    community_id: int,
-    current: Tuple[User, Session] = Depends(get_current_user_with_db),
-):
-    current_user, db = current
-    community = db.query(Community).filter_by(id=community_id).first()
-    if not community:
-        raise HTTPException(status_code=404, detail="Community not found")
-
-    if community.creator_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only the creator can delete this community")
-
-    db.query(CommunityMember).filter_by(community_id=community_id).delete()
-
-    db.delete(community)
-    db.commit()
-    return {"detail": "Community deleted successfully"}
-
 @router.delete("/{community_id}/members/{user_id}")
 def remove_member(
     community_id: int,
@@ -254,8 +235,21 @@ def remove_member(
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
 
-    if community.creator_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only the creator can remove members")
+    # Allow community creator or approved admin to remove members
+    is_creator = community.creator_id == current_user.id
+    is_admin = db.query(CommunityMember).filter_by(
+        community_id=community_id,
+        user_id=current_user.id,
+        is_approved=True,
+        is_admin=True
+    ).first() is not None
+
+    if not (is_creator or is_admin):
+        raise HTTPException(status_code=403, detail="Not authorized to remove members")
+
+    # Prevent removing the creator
+    if user_id == community.creator_id:
+        raise HTTPException(status_code=403, detail="Cannot remove the community creator")
 
     member = db.query(CommunityMember).filter_by(
         user_id=user_id, community_id=community_id
