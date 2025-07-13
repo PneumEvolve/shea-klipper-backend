@@ -183,22 +183,22 @@ def get_pending_requests(
 ):
     current_user, db = current
     community = db.query(Community).filter_by(id=community_id).first()
+
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
 
-    # Allow creator or approved admin
     is_creator = community.creator_id == current_user.id
-    is_admin = (
-        db.query(CommunityMember)
-        .filter_by(
-            community_id=community_id,
-            user_id=current_user.id,
-            is_admin=True,
-            is_approved=True
-        )
-        .first()
-        is not None
-    )
+    print(f"Current user ID: {current_user.id}, Creator ID: {community.creator_id}, Is Creator: {is_creator}")
+
+    admin_membership = db.query(CommunityMember).filter_by(
+        community_id=community_id,
+        user_id=current_user.id,
+        is_admin=True,
+        is_approved=True
+    ).first()
+
+    is_admin = admin_membership is not None
+    print(f"Admin membership found: {admin_membership is not None}, Is Admin: {is_admin}")
 
     if not (is_creator or is_admin):
         raise HTTPException(status_code=403, detail="Unauthorized")
