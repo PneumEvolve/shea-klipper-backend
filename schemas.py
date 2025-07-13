@@ -337,6 +337,7 @@ class CommunityMemberWithUserOut(BaseModel):
     community_id: int
     is_approved: bool
     is_admin: bool
+    is_creator: bool = False
     user: UserResponse  # <-- nested user info
 
     class Config:

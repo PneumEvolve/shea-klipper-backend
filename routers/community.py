@@ -423,7 +423,18 @@ def get_full_member_list(
         .all()
     )
 
-    return members
+    result = []
+    for member in members:
+        result.append({
+            "user_id": member.user_id,
+            "community_id": member.community_id,
+            "is_approved": member.is_approved,
+            "is_admin": member.is_admin,
+            "user": member.user,
+            "is_creator": member.user_id == community.creator_id  # ✅ Flag
+        })
+
+    return result
 
 @router.post("/{community_id}/chat", response_model=ChatMessage)
 def post_message(
