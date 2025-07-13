@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from uuid import UUID
 from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage
