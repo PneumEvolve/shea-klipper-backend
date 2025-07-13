@@ -231,10 +231,11 @@ class CommunityOut(BaseModel):
     visibility: str
     creator_id: int
     created_at: datetime
-    layout_config: Optional[list] = []
+    component_order: Optional[List[str]] = Field(None, alias="layout_config")
 
     class Config:
         orm_mode = True
+        allow_population_by_field_name = True
 
 class CommunityMemberOut(BaseModel):
     user_id: int
