@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from uuid import UUID
@@ -75,10 +75,10 @@ def update_community(
     db.refresh(community)
     return community
 
-@router.put("/communities/{community_id}/layout")
+@router.put("/{community_id}/layout")
 def update_layout_config(
     community_id: int,
-    layout_config: list,
+    layout_config: List[str] = Body(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_with_db),
 ):
