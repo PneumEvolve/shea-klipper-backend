@@ -404,7 +404,7 @@ def delete_project_task(
     db.commit()
     return {"detail": "Task deleted"}
 
-@router.get("/{community_id}/full-members", response_model=List[UserInfo])
+@router.get("/{community_id}/full-members", response_model=List[CommunityMemberWithUserOut])
 def get_full_member_list(
     community_id: int,
     db: Session = Depends(get_db)
@@ -413,28 +413,17 @@ def get_full_member_list(
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
 
-    creator_id = community.creator_id
-    approved_members = db.query(CommunityMember).filter(
-        CommunityMember.community_id == community_id,
-        CommunityMember.is_approved == True
-    ).all()
+    members = (
+        db.query(CommunityMember)
+        .options(joinedload(CommunityMember.user))
+        .filter(
+            CommunityMember.community_id == community_id,
+            CommunityMember.is_approved == True
+        )
+        .all()
+    )
 
-    user_ids = set([m.user_id for m in approved_members])
-    user_ids.add(creator_id)
-
-    users = db.query(User).filter(User.id.in_(user_ids)).all()
-
-    result = []
-    for user in users:
-        result.append({
-            "user_id": user.id,
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "is_creator": user.id == creator_id
-        })
-
-    return result
+    return members
 
 @router.post("/{community_id}/chat", response_model=ChatMessage)
 def post_message(
