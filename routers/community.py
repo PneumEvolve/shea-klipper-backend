@@ -78,17 +78,18 @@ def update_community(
 @router.put("/{community_id}/layout")
 def update_layout_config(
     community_id: int,
-    body: LayoutConfigUpdate,  # 👈 use the model here
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_with_db),
+    body: LayoutConfigUpdate,
+    db: Session = Depends(get_db),  # you already get db separately here
+    current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
+    user, _ = current  # 👈 unpack the tuple
     community = db.query(Community).filter(Community.id == community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
-    if community.creator_id != current_user.id:
+    if community.creator_id != user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    community.layout_config = body.layout_config  # 👈 access from model
+    community.layout_config = body.layout_config
     db.commit()
     return {"success": True}
 
