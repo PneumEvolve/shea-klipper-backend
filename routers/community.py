@@ -70,6 +70,23 @@ def update_community(
     db.refresh(community)
     return community
 
+@router.put("/communities/{community_id}/layout")
+def update_layout_config(
+    community_id: int,
+    layout_config: list,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    community = db.query(Community).filter(Community.id == community_id).first()
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+    if community.creator_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    community.layout_config = layout_config
+    db.commit()
+    return {"success": True}
+
 @router.post("/{community_id}/join")
 def request_to_join_community(
     community_id: int,

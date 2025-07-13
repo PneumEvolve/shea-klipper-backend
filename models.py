@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON 
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 import uuid
@@ -388,6 +388,7 @@ class Community(Base):
     visibility = Column(String, default="public")  # "public" or "private"
     creator_id = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
+    layout_config = Column(JSON, default=list)
 
     creator = relationship("User", back_populates="created_communities")
     members = relationship("CommunityMember", back_populates="community", cascade="all, delete")

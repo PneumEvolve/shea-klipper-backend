@@ -231,6 +231,7 @@ class CommunityOut(BaseModel):
     visibility: str
     creator_id: int
     created_at: datetime
+    layout_config: Optional[list] = []
 
     class Config:
         orm_mode = True
@@ -248,6 +249,7 @@ class CommunityUpdate(BaseModel):
     name: str
     description: Optional[str]
     visibility: str
+    layout_config: Optional[list] = None
 
 class UsernameUpdate(BaseModel):
     username: str
