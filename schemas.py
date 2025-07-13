@@ -331,3 +331,13 @@ class ChatMessage(ChatMessageBase):
 
     class Config:
         orm_mode = True
+
+class CommunityMemberWithUserOut(BaseModel):
+    user_id: int
+    community_id: int
+    is_approved: bool
+    is_admin: bool
+    user: UserResponse  # <-- nested user info
+
+    class Config:
+        orm_mode = True

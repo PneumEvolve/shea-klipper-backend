@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from uuid import UUID
 from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage
-from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate, LayoutConfigUpdate
+from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate, LayoutConfigUpdate, CommunityMemberWithUserOut
 from routers.auth import get_current_user_dependency, get_current_user_model, get_current_user_with_db
 from typing import List, Optional, Tuple
 from datetime import datetime
@@ -162,7 +162,7 @@ def get_members(
         is_approved=True
     ).all()
 
-@router.get("/{community_id}/join-requests", response_model=List[CommunityMemberOut])
+@router.get("/{community_id}/join-requests", response_model=List[CommunityMemberWithUserOut])
 def get_pending_requests(
     community_id: int,
     current: Tuple[User, Session] = Depends(get_current_user_with_db),
@@ -174,7 +174,7 @@ def get_pending_requests(
 
     return db.query(CommunityMember).filter_by(
         community_id=community_id, is_approved=False
-    ).all()
+    ).options(joinedload(CommunityMember.user)).all()
 
 @router.delete("/{community_id}")
 def delete_community(
