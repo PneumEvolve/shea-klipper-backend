@@ -44,7 +44,12 @@ def get_community_by_id(
     current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
     _, db = current
-    community = db.query(Community).filter(Community.id == community_id).first()
+    community = (
+        db.query(Community)
+        .options(joinedload(Community.members))  # ✅ Load members for frontend admin check
+        .filter(Community.id == community_id)
+        .first()
+    )
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
     return community

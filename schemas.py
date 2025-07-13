@@ -232,6 +232,7 @@ class CommunityOut(BaseModel):
     creator_id: int
     created_at: datetime
     component_order: Optional[List[str]] = Field(None, alias="layout_config")
+    members: List[CommunityMemberOut]
 
     class Config:
         orm_mode = True
