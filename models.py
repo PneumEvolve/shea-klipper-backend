@@ -395,6 +395,7 @@ class Community(Base):
     join_requests = relationship("JoinRequest", back_populates="community", cascade="all, delete")
     community_projects = relationship("CommunityProject", back_populates="community", cascade="all, delete")
     user_projects = relationship("Project", back_populates="community", cascade="all, delete")
+    chat_messages = relationship("CommunityChatMessage", backref="community", cascade="all, delete-orphan")
     
 class CommunityMember(Base):
     __tablename__ = "community_members"
@@ -424,7 +425,7 @@ class CommunityChatMessage(Base):
     __tablename__ = "community_chat_messages"
 
     id = Column(Integer, primary_key=True, index=True)
-    community_id = Column(Integer, ForeignKey("communities.id"))
+    community_id = Column(Integer, ForeignKey("communities.id", ondelete="CASCADE"))
     user_id = Column(Integer, ForeignKey("users.id"))
     content = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
