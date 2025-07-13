@@ -224,6 +224,15 @@ class CommunityCreate(BaseModel):
     description: Optional[str] = ""
     visibility: str = "public"
 
+class CommunityMemberOut(BaseModel):
+    user_id: int
+    community_id: int
+    is_approved: bool
+    is_admin: bool
+
+    class Config:
+        orm_mode = True
+
 class CommunityOut(BaseModel):
     id: int
     name: str
@@ -238,14 +247,7 @@ class CommunityOut(BaseModel):
         orm_mode = True
         allow_population_by_field_name = True
 
-class CommunityMemberOut(BaseModel):
-    user_id: int
-    community_id: int
-    is_approved: bool
-    is_admin: bool
 
-    class Config:
-        orm_mode = True
 
 class CommunityUpdate(BaseModel):
     name: str
