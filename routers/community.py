@@ -183,12 +183,32 @@ def get_pending_requests(
 ):
     current_user, db = current
     community = db.query(Community).filter_by(id=community_id).first()
-    if not community or community.creator_id != current_user.id:
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    # Allow creator or approved admin
+    is_creator = community.creator_id == current_user.id
+    is_admin = (
+        db.query(CommunityMember)
+        .filter_by(
+            community_id=community_id,
+            user_id=current_user.id,
+            is_admin=True,
+            is_approved=True
+        )
+        .first()
+        is not None
+    )
+
+    if not (is_creator or is_admin):
         raise HTTPException(status_code=403, detail="Unauthorized")
 
-    return db.query(CommunityMember).filter_by(
-        community_id=community_id, is_approved=False
-    ).options(joinedload(CommunityMember.user)).all()
+    return (
+        db.query(CommunityMember)
+        .filter_by(community_id=community_id, is_approved=False)
+        .options(joinedload(CommunityMember.user))
+        .all()
+    )
 
 @router.delete("/{community_id}")
 def delete_community(
