@@ -101,14 +101,24 @@ def update_community(
 def update_layout_config(
     community_id: int,
     body: LayoutConfigUpdate,
-    db: Session = Depends(get_db),  # you already get db separately here
+    db: Session = Depends(get_db),
     current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
-    user, _ = current  # 👈 unpack the tuple
+    user, _ = current
     community = db.query(Community).filter(Community.id == community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
-    if community.creator_id != user.id:
+
+    # Check if the user is the creator or an approved admin
+    is_creator = community.creator_id == user.id
+    is_admin = db.query(CommunityMember).filter_by(
+        community_id=community_id,
+        user_id=user.id,
+        is_admin=True,
+        is_approved=True
+    ).first()
+
+    if not is_creator and not is_admin:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     community.layout_config = body.layout_config
