@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from uuid import UUID
 from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage
-from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate
+from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate, LayoutConfigUpdate
 from routers.auth import get_current_user_dependency, get_current_user_model, get_current_user_with_db
 from typing import List, Optional, Tuple
 from datetime import datetime
@@ -78,7 +78,7 @@ def update_community(
 @router.put("/{community_id}/layout")
 def update_layout_config(
     community_id: int,
-    layout_config: List[str] = Body(...),
+    body: LayoutConfigUpdate,  # 👈 use the model here
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_with_db),
 ):
@@ -87,8 +87,8 @@ def update_layout_config(
         raise HTTPException(status_code=404, detail="Community not found")
     if community.creator_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
-    
-    community.layout_config = layout_config
+
+    community.layout_config = body.layout_config  # 👈 access from model
     db.commit()
     return {"success": True}
 

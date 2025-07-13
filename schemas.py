@@ -255,6 +255,9 @@ class CommunityUpdate(BaseModel):
     visibility: str
     layout_config: Optional[list] = None
 
+class LayoutConfigUpdate(BaseModel):
+    layout_config: List[str]
+
 class UsernameUpdate(BaseModel):
     username: str
 
