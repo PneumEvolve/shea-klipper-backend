@@ -145,10 +145,22 @@ def approve_member(
     current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
     current_user, db = current
+
     community = db.query(Community).filter_by(id=community_id).first()
     if not community:
         raise HTTPException(status_code=404, detail="Community not found")
-    if community.creator_id != current_user.id:
+
+    # Check if the user is the creator or an admin in the community
+    is_creator = community.creator_id == current_user.id
+
+    is_admin = db.query(CommunityMember).filter_by(
+        community_id=community_id,
+        user_id=current_user.id,
+        is_approved=True,
+        is_admin=True,
+    ).first() is not None
+
+    if not (is_creator or is_admin):
         raise HTTPException(status_code=403, detail="Not authorized")
 
     member = db.query(CommunityMember).filter_by(
@@ -162,8 +174,10 @@ def approve_member(
         member.is_approved = True
     else:
         db.delete(member)
+
     db.commit()
     return {"status": "updated"}
+
 
 @router.get("/{community_id}/members", response_model=List[CommunityMemberOut])
 def get_members(
