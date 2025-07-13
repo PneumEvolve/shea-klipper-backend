@@ -17,17 +17,25 @@ def create_community(
     current: Tuple[User, Session] = Depends(get_current_user_with_db)
 ):
     current_user, db = current
+
     new_community = Community(
         name=data.name,
         description=data.description,
         visibility=data.visibility,
-        creator_id=current_user.id
+        creator_id=current_user.id,
+        layout_config=["goals", "chat", "resources", "events", "members", "admin", "component_manager"]
     )
     db.add(new_community)
     db.commit()
     db.refresh(new_community)
 
-    member = CommunityMember(user_id=current_user.id, community_id=new_community.id)
+    # ✅ Add creator as approved admin
+    member = CommunityMember(
+        user_id=current_user.id,
+        community_id=new_community.id,
+        is_admin=True,
+        is_approved=True
+    )
     db.add(member)
     db.commit()
 
