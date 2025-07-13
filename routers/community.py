@@ -75,7 +75,7 @@ def update_layout_config(
     community_id: int,
     layout_config: list,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_with_db),
 ):
     community = db.query(Community).filter(Community.id == community_id).first()
     if not community:
