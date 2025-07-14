@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 
 # User Schema
@@ -357,6 +357,25 @@ class ResourceUpdate(ResourceBase):
     pass
 
 class ResourceOut(ResourceBase):
+    id: int
+    user_id: int
+    community_id: int
+
+    class Config:
+        orm_mode = True
+
+class CommunityEventBase(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    date: date
+
+class CommunityEventCreate(CommunityEventBase):
+    pass
+
+class CommunityEventUpdate(CommunityEventBase):
+    pass
+
+class CommunityEventOut(CommunityEventBase):
     id: int
     user_id: int
     community_id: int

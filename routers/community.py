@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from uuid import UUID
-from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage, Resource
-from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate, LayoutConfigUpdate, CommunityMemberWithUserOut, ResourceCreate, ResourceOut, ResourceUpdate
+from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage, Resource, CommunityEvent
+from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate, LayoutConfigUpdate, CommunityMemberWithUserOut, ResourceCreate, ResourceOut, ResourceUpdate, CommunityEventCreate, CommunityEventUpdate, CommunityEventOut
 from routers.auth import get_current_user_dependency, get_current_user_model, get_current_user_with_db
 from typing import List, Optional, Tuple
-from datetime import datetime
+from datetime import datetime, date
 
 router = APIRouter(prefix="/communities", tags=["communities"])
 
@@ -644,3 +644,90 @@ def delete_resource(
     db.delete(resource)
     db.commit()
     return {"detail": "Resource deleted"}
+
+# Get events for a given community
+@router.get("/communities/{community_id}/events", response_model=List[CommunityEventOut])
+def list_events(
+    community_id: int,
+    db: Session = Depends(get_db)
+):
+    return db.query(CommunityEvent).filter_by(community_id=community_id).all()
+
+# Create a new event
+@router.post("/communities/{community_id}/events", response_model=CommunityEventOut)
+def create_event(
+    community_id: int,
+    data: CommunityEventCreate,
+    current: tuple = Depends(get_current_user_with_db),
+):
+    user, db = current
+
+    membership = db.query(CommunityMember).filter_by(
+        user_id=user.id, community_id=community_id, is_approved=True
+    ).first()
+
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member")
+
+    new_event = CommunityEvent(
+        community_id=community_id,
+        user_id=user.id,
+        title=data.title,
+        description=data.description,
+        date=data.date,
+    )
+    db.add(new_event)
+    db.commit()
+    db.refresh(new_event)
+    return new_event
+
+# Edit event
+@router.put("/communities/{community_id}/events/{event_id}", response_model=CommunityEventOut)
+def update_event(
+    community_id: int,
+    event_id: int,
+    data: CommunityEventUpdate,
+    current: tuple = Depends(get_current_user_with_db),
+):
+    user, db = current
+
+    event = db.query(CommunityEvent).filter_by(id=event_id, community_id=community_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Get creator and admins
+    community = db.query(Community).filter_by(id=community_id).first()
+    membership = db.query(CommunityMember).filter_by(user_id=user.id, community_id=community_id).first()
+
+    if not (event.user_id == user.id or membership and membership.is_admin or user.id == community.creator_id):
+        raise HTTPException(status_code=403, detail="Not authorized to edit")
+
+    event.title = data.title
+    event.description = data.description
+    event.date = data.date
+    db.commit()
+    db.refresh(event)
+    return event
+
+# Delete event
+@router.delete("/communities/{community_id}/events/{event_id}")
+def delete_event(
+    community_id: int,
+    event_id: int,
+    current: tuple = Depends(get_current_user_with_db),
+):
+    user, db = current
+
+    event = db.query(CommunityEvent).filter_by(id=event_id, community_id=community_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    community = db.query(Community).filter_by(id=community_id).first()
+    membership = db.query(CommunityMember).filter_by(user_id=user.id, community_id=community_id).first()
+
+    if not (event.user_id == user.id or membership and membership.is_admin or user.id == community.creator_id):
+        raise HTTPException(status_code=403, detail="Not authorized to delete")
+
+    db.delete(event)
+    db.commit()
+    return {"detail": "Event deleted"}

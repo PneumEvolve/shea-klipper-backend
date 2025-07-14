@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON 
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON, Date
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 import uuid
@@ -48,6 +48,7 @@ class User(Base):
     joined_communities = relationship("CommunityMember", back_populates="user", cascade="all, delete")
     join_requests = relationship("JoinRequest", back_populates="user", cascade="all, delete")
     resources = relationship("Resource", back_populates="user", cascade="all, delete")
+    events = relationship("CommunityEvent", back_populates="user", cascade="all, delete")
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -398,6 +399,7 @@ class Community(Base):
     user_projects = relationship("Project", back_populates="community", cascade="all, delete")
     chat_messages = relationship("CommunityChatMessage", backref="community", cascade="all, delete-orphan")
     resources = relationship("Resource", back_populates="community", cascade="all, delete")
+    events = relationship("CommunityEvent", back_populates="community", cascade="all, delete")
 
 class CommunityMember(Base):
     __tablename__ = "community_members"
@@ -446,3 +448,16 @@ class Resource(Base):
 
     user = relationship("User", back_populates="resources")
     community = relationship("Community", back_populates="resources")
+
+class CommunityEvent(Base):
+    __tablename__ = "community_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    community_id = Column(Integer, ForeignKey("communities.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    title = Column(String, nullable=False)
+    description = Column(Text)
+    date = Column(Date, nullable=False)
+
+    user = relationship("User", back_populates="events")
+    community = relationship("Community", back_populates="events")
