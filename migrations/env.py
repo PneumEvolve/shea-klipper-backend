@@ -18,6 +18,7 @@ if config.config_file_name is not None:
 
 # Import your metadata
 from models import Base
+import models
 
 # Pull DB URL from env
 DATABASE_URL = os.environ.get("DATABASE_URL")

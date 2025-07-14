@@ -47,6 +47,7 @@ class User(Base):
     created_communities = relationship("Community", back_populates="creator", cascade="all, delete")
     joined_communities = relationship("CommunityMember", back_populates="user", cascade="all, delete")
     join_requests = relationship("JoinRequest", back_populates="user", cascade="all, delete")
+    resources = relationship("Resource", back_populates="user", cascade="all, delete")
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -396,7 +397,8 @@ class Community(Base):
     community_projects = relationship("CommunityProject", back_populates="community", cascade="all, delete")
     user_projects = relationship("Project", back_populates="community", cascade="all, delete")
     chat_messages = relationship("CommunityChatMessage", backref="community", cascade="all, delete-orphan")
-    
+    resources = relationship("Resource", back_populates="community", cascade="all, delete")
+
 class CommunityMember(Base):
     __tablename__ = "community_members"
 
