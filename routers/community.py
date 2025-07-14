@@ -646,7 +646,7 @@ def delete_resource(
     return {"detail": "Resource deleted"}
 
 # Get events for a given community
-@router.get("/communities/{community_id}/events", response_model=List[CommunityEventOut])
+@router.get("/{community_id}/events", response_model=List[CommunityEventOut])
 def list_events(
     community_id: int,
     db: Session = Depends(get_db)
@@ -654,7 +654,7 @@ def list_events(
     return db.query(CommunityEvent).filter_by(community_id=community_id).all()
 
 # Create a new event
-@router.post("/communities/{community_id}/events", response_model=CommunityEventOut)
+@router.post("/{community_id}/events", response_model=CommunityEventOut)
 def create_event(
     community_id: int,
     data: CommunityEventCreate,
@@ -682,7 +682,7 @@ def create_event(
     return new_event
 
 # Edit event
-@router.put("/communities/{community_id}/events/{event_id}", response_model=CommunityEventOut)
+@router.put("/{community_id}/events/{event_id}", response_model=CommunityEventOut)
 def update_event(
     community_id: int,
     event_id: int,
@@ -710,7 +710,7 @@ def update_event(
     return event
 
 # Delete event
-@router.delete("/communities/{community_id}/events/{event_id}")
+@router.delete("/{community_id}/events/{event_id}")
 def delete_event(
     community_id: int,
     event_id: int,
