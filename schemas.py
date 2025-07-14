@@ -342,3 +342,24 @@ class CommunityMemberWithUserOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+# schemas/resource.py
+
+class ResourceBase(BaseModel):
+    title: str
+    url: str
+    description: Optional[str] = ""
+
+class ResourceCreate(ResourceBase):
+    pass
+
+class ResourceUpdate(ResourceBase):
+    pass
+
+class ResourceOut(ResourceBase):
+    id: int
+    user_id: int
+    community_id: int
+
+    class Config:
+        orm_mode = True

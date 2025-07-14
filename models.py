@@ -431,3 +431,16 @@ class CommunityChatMessage(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User")
+
+class Resource(Base):
+    __tablename__ = "resources"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    description = Column(Text, default="")
+    user_id = Column(Integer, ForeignKey("users.id"))
+    community_id = Column(Integer, ForeignKey("communities.id"))
+
+    user = relationship("User", back_populates="resources")
+    community = relationship("Community", back_populates="resources")

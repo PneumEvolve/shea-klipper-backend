@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from uuid import UUID
-from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage
-from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate, LayoutConfigUpdate, CommunityMemberWithUserOut
+from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage, Resource
+from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate, LayoutConfigUpdate, CommunityMemberWithUserOut, ResourceCreate, ResourceOut, ResourceUpdate
 from routers.auth import get_current_user_dependency, get_current_user_model, get_current_user_with_db
 from typing import List, Optional, Tuple
 from datetime import datetime
@@ -563,3 +563,84 @@ def delete_message(
     db.delete(message)
     db.commit()
     return {"detail": "Message deleted"}
+
+
+@router.get("/{community_id}/resources", response_model=List[ResourceOut])
+def get_resources(community_id: int, db: Session = Depends(get_db)):
+    return db.query(Resource).filter(Resource.community_id == community_id).all()
+
+@router.post("/{community_id}/resources", response_model=ResourceOut)
+def create_resource(
+    community_id: int,
+    resource_data: ResourceCreate,
+    current: tuple = Depends(get_current_user_with_db),
+):
+    user, db = current
+    community = db.query(Community).filter_by(id=community_id).first()
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    resource = Resource(
+        title=resource_data.title,
+        url=resource_data.url,
+        description=resource_data.description,
+        community_id=community_id,
+        user_id=user.id,
+    )
+    db.add(resource)
+    db.commit()
+    db.refresh(resource)
+    return resource
+
+@router.put("/{community_id}/resources/{resource_id}", response_model=ResourceOut)
+def update_resource(
+    community_id: int,
+    resource_id: int,
+    update_data: ResourceUpdate,
+    current: tuple = Depends(get_current_user_with_db),
+):
+    user, db = current
+    resource = db.query(Resource).filter_by(id=resource_id, community_id=community_id).first()
+
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+
+    # Check permission
+    is_creator = resource.community.creator_id == user.id
+    is_admin = db.query(CommunityMember).filter_by(
+        community_id=community_id, user_id=user.id, is_admin=True
+    ).first()
+
+    if resource.user_id != user.id and not is_creator and not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    resource.title = update_data.title
+    resource.url = update_data.url
+    resource.description = update_data.description
+    db.commit()
+    db.refresh(resource)
+    return resource
+
+@router.delete("/{community_id}/resources/{resource_id}")
+def delete_resource(
+    community_id: int,
+    resource_id: int,
+    current: tuple = Depends(get_current_user_with_db),
+):
+    user, db = current
+    resource = db.query(Resource).filter_by(id=resource_id, community_id=community_id).first()
+
+    if not resource:
+        raise HTTPException(status_code=404, detail="Resource not found")
+
+    is_creator = resource.community.creator_id == user.id
+    is_admin = db.query(CommunityMember).filter_by(
+        community_id=community_id, user_id=user.id, is_admin=True
+    ).first()
+
+    if resource.user_id != user.id and not is_creator and not is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    db.delete(resource)
+    db.commit()
+    return {"detail": "Resource deleted"}
