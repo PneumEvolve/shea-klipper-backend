@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from auth import get_current_user_dependency
+from routers.auth import get_current_user_dependency
 from crud.farmgame import farmgame as crud
 from schemas import FarmGameStateCreate, FarmGameStateResponse
 
