@@ -9,9 +9,9 @@ def get_game_state_by_user(db: Session, user_id: int):
 def create_or_update_game_state(db: Session, user_id: int, state: FarmGameStateCreate):
     existing = get_game_state_by_user(db, user_id)
     if existing:
-        existing.state_json = state.state_json
+        existing.data = state.data  # ✅ changed from state.state_json
     else:
-        existing = FarmGameState(user_id=user_id, state_json=state.state_json)
+        existing = FarmGameState(user_id=user_id, data=state.data)  # ✅ changed from state.state_json
         db.add(existing)
     db.commit()
     db.refresh(existing)
