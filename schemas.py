@@ -382,3 +382,19 @@ class CommunityEventOut(CommunityEventBase):
 
     class Config:
         orm_mode = True
+
+
+# schemas/farmgame.py
+
+class FarmGameStateBase(BaseModel):
+    state_json: str
+
+class FarmGameStateCreate(FarmGameStateBase):
+    pass
+
+class FarmGameStateResponse(FarmGameStateBase):
+    id: int
+    user_id: int
+
+    class Config:
+        orm_mode = True

@@ -49,6 +49,7 @@ class User(Base):
     join_requests = relationship("JoinRequest", back_populates="user", cascade="all, delete")
     resources = relationship("Resource", back_populates="user", cascade="all, delete")
     events = relationship("CommunityEvent", back_populates="user", cascade="all, delete")
+    farm_game_state = relationship("FarmGameState", uselist=False, back_populates="user")
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -461,3 +462,13 @@ class CommunityEvent(Base):
 
     user = relationship("User", back_populates="events")
     community = relationship("Community", back_populates="events")
+
+class FarmGameState(Base):
+    __tablename__ = "farm_game_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    data = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="farm_game_state")
