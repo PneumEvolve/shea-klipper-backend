@@ -387,7 +387,7 @@ class CommunityEventOut(CommunityEventBase):
 # schemas/farmgame.py
 
 class FarmGameStateBase(BaseModel):
-    state_json: str
+    data: str
 
 class FarmGameStateCreate(FarmGameStateBase):
     pass
