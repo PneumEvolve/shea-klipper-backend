@@ -472,3 +472,40 @@ class FarmGameState(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="farm_game_state")
+
+# Lyra's evolving soul
+class LyraSoul(Base):
+    __tablename__ = "lyra_soul"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tone = Column(Text, nullable=False)
+    style = Column(Text, nullable=False)
+    beliefs = Column(ARRAY(Text), default=[])
+    memory = Column(ARRAY(Text), default=[])
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LyraChatLog(Base):
+    __tablename__ = "lyra_chat_log"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=True)  # can be 'anonymous' or a real user
+    message = Column(Text, nullable=False)
+    reply = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+class LyraDailyMemory(Base):
+    __tablename__ = "lyra_daily_memory"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    day = Column(Date, nullable=False, unique=True)
+    summary = Column(Text, nullable=False)
+
+
+class LyraWeeklyMemory(Base):
+    __tablename__ = "lyra_weekly_memory"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    week_start = Column(Date, nullable=False, unique=True)
+    summary = Column(Text, nullable=False)
