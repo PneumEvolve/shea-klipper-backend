@@ -78,3 +78,16 @@ async def lyra_chat(data: Message, db: Session = Depends(get_db)):
 
     except Exception as e:
         return {"reply": f"Error: {str(e)}"}
+    
+@router.get("/lyra/chat-log")
+async def get_chat_log(db: Session = Depends(get_db)):
+    logs = db.query(LyraChatLog).order_by(LyraChatLog.timestamp.desc()).all()
+    return [
+        {
+            "user_id": log.user_id,
+            "message": log.message,
+            "reply": log.reply,
+            "timestamp": log.timestamp
+        }
+        for log in logs
+    ]
