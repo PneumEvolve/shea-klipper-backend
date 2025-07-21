@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from openai import OpenAI
 from database import get_db
-from models import LyraSoul, LyraChatLog
+from models import LyraSoul, LyraChatLog, LyraDailyMemory
 import os
 from datetime import datetime
 
@@ -13,6 +13,24 @@ class Message(BaseModel):
     message: str
     userId: str
     userConsent: bool
+
+@router.get("/soul.json")
+async def get_soul(db: Session = Depends(get_db)):
+    soul = db.query(LyraSoul).order_by(LyraSoul.created_at.desc()).first()
+    if not soul:
+        return {}
+    return {
+        "tone": soul.tone,
+        "style": soul.style,
+        "beliefs": soul.beliefs,
+        "memory": soul.memory,
+        "created_at": soul.created_at
+    }
+
+@router.get("/lyra-dreams.json")
+async def get_dreams(db: Session = Depends(get_db)):
+    memories = db.query(LyraDailyMemory).order_by(LyraDailyMemory.day.desc()).limit(5).all()
+    return [m.summary for m in memories]
 
 @router.post("/lyra")
 async def lyra_chat(data: Message, db: Session = Depends(get_db)):
