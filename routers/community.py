@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from uuid import UUID
-from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage, Resource, CommunityEvent
+from models import Community, CommunityMember, User, CommunityProject, CommunityProjectTask, CommunityChatMessage, Resource, CommunityEvent, InboxMessage
 from schemas import CommunityCreate, CommunityOut, CommunityMemberOut, CommunityUpdate, CommunityProjectCreate, CommunityProjectResponse, CommunityProjectTaskCreate, CommunityProjectTaskResponse, TaskUpdate, UserInfo, ChatMessageBase, ChatMessageCreate, ChatMessage, CommunityProjectUpdate, LayoutConfigUpdate, CommunityMemberWithUserOut, ResourceCreate, ResourceOut, ResourceUpdate, CommunityEventCreate, CommunityEventUpdate, CommunityEventOut
 from routers.auth import get_current_user_dependency, get_current_user_model, get_current_user_with_db
 from typing import List, Optional, Tuple
@@ -131,20 +131,37 @@ def request_to_join_community(
     current: Tuple[User, Session] = Depends(get_current_user_with_db),
 ):
     current_user, db = current
+
+    # Check if the user has already requested or joined
     existing = db.query(CommunityMember).filter_by(
         user_id=current_user.id, community_id=community_id
     ).first()
-
     if existing:
         raise HTTPException(status_code=400, detail="Already requested or member")
 
+    # Create the join request
     new_request = CommunityMember(
         user_id=current_user.id,
         community_id=community_id,
         is_approved=False
     )
     db.add(new_request)
+
+    # 🔥 Get the community and notify its creator
+    community = db.query(Community).filter(Community.id == community_id).first()
+    if community:
+        creator_id = community.creator_id  # ✅ assumes your Community model has this
+        if creator_id and creator_id != current_user.id:
+            content = f"👥 {current_user.username} has requested to join your community \"{community.name}\"."
+            inbox = InboxMessage(
+                user_id=creator_id,
+                content=content,
+                timestamp=datetime.utcnow()
+            )
+            db.add(inbox)
+
     db.commit()
+
     return {"message": "Join request submitted."}
 
 @router.post("/{community_id}/members/{user_id}/approve")
