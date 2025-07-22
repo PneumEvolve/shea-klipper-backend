@@ -509,3 +509,11 @@ class LyraWeeklyMemory(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     week_start = Column(Date, nullable=False, unique=True)
     summary = Column(Text, nullable=False)
+
+
+class InboxMessage(Base):
+    __tablename__ = "inbox_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, index=True)
+    content = Column(String)
+    timestamp = Column(DateTime)
