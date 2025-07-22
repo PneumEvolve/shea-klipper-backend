@@ -517,3 +517,4 @@ class InboxMessage(Base):
     user_id = Column(String, index=True)
     content = Column(String)
     timestamp = Column(DateTime)
+    read = Column(Boolean, default=False)
