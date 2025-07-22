@@ -20,8 +20,20 @@ def send_message(data: MessageInput, db=Depends(get_db)):
 
 @router.get("/inbox/{user_id}")
 def get_inbox(user_id: str, db=Depends(get_db)):
-    messages = db.query(InboxMessage).filter_by(user_id=user_id).order_by(InboxMessage.timestamp.desc()).all()
-    return [{"id": m.id, "content": m.content, "timestamp": m.timestamp} for m in messages]
+    messages = db.query(InboxMessage)\
+        .filter_by(user_id=user_id)\
+        .order_by(InboxMessage.timestamp.desc())\
+        .all()
+        
+    return [
+        {
+            "id": m.id,
+            "content": m.content,
+            "timestamp": m.timestamp,
+            "read": m.read  # ✅ include the read flag
+        }
+        for m in messages
+    ]
 
 @router.post("/inbox/read/{message_id}")
 def mark_message_read(message_id: int, db=Depends(get_db)):
