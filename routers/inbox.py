@@ -1,14 +1,19 @@
 # /routes/inbox.py
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from datetime import datetime
 from models import InboxMessage
 from database import get_db
 
 router = APIRouter()
 
+class MessageInput(BaseModel):
+    user_id: str
+    content: str
+
 @router.post("/inbox/send")
-def send_message(user_id: str, content: str, db=Depends(get_db)):
-    msg = InboxMessage(user_id=user_id, content=content, timestamp=datetime.utcnow())
+def send_message(data: MessageInput, db=Depends(get_db)):
+    msg = InboxMessage(user_id=data.user_id, content=data.content, timestamp=datetime.utcnow())
     db.add(msg)
     db.commit()
     return {"status": "sent"}
