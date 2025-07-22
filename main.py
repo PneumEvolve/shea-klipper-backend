@@ -43,7 +43,8 @@ from routers import (
     projects,
     community,
     farmgame,
-    lyra
+    lyra,
+    inbox
 )
 
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -140,3 +141,4 @@ app.include_router(projects.router)
 app.include_router(community.router)
 app.include_router(farmgame.router)
 app.include_router(lyra.router)
+app.include_router(inbox.router)
