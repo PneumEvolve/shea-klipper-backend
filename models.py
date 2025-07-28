@@ -518,3 +518,13 @@ class InboxMessage(Base):
     content = Column(String)
     timestamp = Column(DateTime)
     read = Column(Boolean, default=False)
+
+class LivingPlanSection(Base):
+    __tablename__ = "living_plan_sections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, default="")
+    description = Column(Text, default="")
+    tasks = Column(JSON, default=[])
+    notes = Column(Text, default="")
+    owner_email = Column(String, index=True)

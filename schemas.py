@@ -398,3 +398,15 @@ class FarmGameStateResponse(FarmGameStateBase):
 
     class Config:
         orm_mode = True
+
+
+# schemas/LivingPlan.py
+
+class LivingPlanSectionSchema(BaseModel):
+    title: str
+    description: str
+    tasks: List[str]
+    notes: str = ""
+
+    class Config:
+        orm_mode = True
