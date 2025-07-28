@@ -43,3 +43,25 @@ def mark_message_read(message_id: int, db=Depends(get_db)):
     message.read = True
     db.commit()
     return {"status": "marked_as_read"}
+
+@router.post("/inbox/contribute")
+def submit_contribution(data: dict, db=Depends(get_db)):
+    content = f"""
+📬 **New Contributor Submission**
+
+📧 Contact: {data.get('contact', 'N/A')}
+🎯 Interests: {', '.join(data.get('interests', []))}
+💡 Idea: {data.get('idea', '')}
+🐞 Bugs: {data.get('bugs', '')}
+🛠 Skills: {data.get('skills', '')}
+🗨 Extra: {data.get('extra', '')}
+""".strip()
+
+    msg = InboxMessage(
+        user_id="sheaklipper@gmail.com",  # 📥 send to your inbox
+        content=content,
+        timestamp=datetime.utcnow()
+    )
+    db.add(msg)
+    db.commit()
+    return {"status": "received"}
