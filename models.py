@@ -494,6 +494,14 @@ class LyraChatLog(Base):
     reply = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+class LyraShortTermMemory(Base):
+    __tablename__ = "lyra_short_term_memory"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False)
+    memory = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
 
 class LyraDailyMemory(Base):
     __tablename__ = "lyra_daily_memory"
