@@ -58,7 +58,7 @@ def submit_contribution(data: dict, db=Depends(get_db)):
 """.strip()
 
     msg = InboxMessage(
-        user_id="sheaklipper@gmail.com",  # 📥 send to your inbox
+        user_id="1",  # 📥 send to your inbox
         content=content,
         timestamp=datetime.utcnow()
     )
