@@ -33,7 +33,7 @@ async def get_dreams(user_id: str, db: Session = Depends(get_db)):
     memories = db.query(LyraDailyMemory) \
         .filter_by(user_id=user_id) \
         .order_by(LyraDailyMemory.day.desc()).limit(5).all()
-    return [m.summary for m in memories]
+    return [{"day": m.day.isoformat(), "summary": m.summary} for m in memories]
 
 @router.post("/lyra")
 async def lyra_chat(data: Message, db: Session = Depends(get_db)):
