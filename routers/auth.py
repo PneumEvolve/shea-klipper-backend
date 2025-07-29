@@ -124,17 +124,23 @@ async def login(
     access_token = create_access_token({"sub": user.email, "id": user.id})
     refresh_token = create_refresh_token({"sub": user.email, "id": user.id})
 
+    is_localhost = "localhost" in str(request.base_url)
+
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        samesite="lax",
-        secure=False,  # Set to True if you're using HTTPS
+        samesite="Lax" if is_localhost else "None",
+        secure=not is_localhost,
+        path="/",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
 
     return {"access_token": access_token, "token_type": "bearer"}
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
 @router.post("/refresh")
 def refresh_token(request: Request, db: Session = Depends(get_db)):
