@@ -13,6 +13,7 @@ class Message(BaseModel):
     message: str
     userId: str
     userConsent: bool
+    recentLog: str
 
 @router.get("/soul.json")
 async def get_soul(db: Session = Depends(get_db)):
@@ -58,6 +59,7 @@ async def lyra_chat(data: Message, db: Session = Depends(get_db)):
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_prompt},
+                {"role": "system", "content": f"Short-term memory log:\n{data.recentLog}"},
                 {"role": "user", "content": data.message}
             ]
         )
