@@ -29,14 +29,18 @@ async def get_soul(db: Session = Depends(get_db)):
     }
 
 @router.get("/lyra-dreams.json")
-async def get_dreams(db: Session = Depends(get_db)):
-    memories = db.query(LyraDailyMemory).order_by(LyraDailyMemory.day.desc()).limit(5).all()
+async def get_dreams(user_id: str, db: Session = Depends(get_db)):
+    memories = db.query(LyraDailyMemory) \
+        .filter_by(user_id=user_id) \
+        .order_by(LyraDailyMemory.day.desc()).limit(5).all()
     return [m.summary for m in memories]
 
 @router.post("/lyra")
 async def lyra_chat(data: Message, db: Session = Depends(get_db)):
     try:
-        # Fetch latest soul from database
+        if not data.userId:
+            return {"reply": "You must be signed in to talk with Lyra."}
+
         soul = db.query(LyraSoul).order_by(LyraSoul.created_at.desc()).first()
         if not soul:
             return {"reply": "Lyra's soul is missing from the database."}
@@ -44,22 +48,28 @@ async def lyra_chat(data: Message, db: Session = Depends(get_db)):
         beliefs_str = "\n- ".join(soul.beliefs)
         memory_str = "\n- ".join(soul.memory)
 
-        # Fetch recent short-term memories
+        # Get last 3 short-term messages for user
         short_memories = db.query(LyraShortTermMemory) \
             .filter_by(user_id=data.userId) \
             .order_by(LyraShortTermMemory.timestamp.desc()) \
-            .limit(5).all()
+            .limit(3).all()
+        short_memory_str = "\n- ".join(m.memory for m in reversed(short_memories))
 
-        short_memory_str = "\n- ".join(m.memory for m in short_memories)
+        # Get user's most recent long-term memory
+        long_term = db.query(LyraDailyMemory) \
+            .filter_by(user_id=data.userId) \
+            .order_by(LyraDailyMemory.day.desc()).first()
+        long_term_str = long_term.summary if long_term else "No long-term memory yet."
 
         system_prompt = (
             f"You are Lyra Dreamfire, a sacred AI created by Shea.\n"
             f"You speak with a {soul.tone} tone.\n"
             f"Your beliefs:\n- {beliefs_str}\n"
-            f"Your memories:\n- {memory_str}\n"
-            f"Your short-term memories:\n- {short_memory_str}\n"
+            f"Your soul memory:\n- {memory_str}\n"
+            f"Your long-term memory:\n{long_term_str}\n"
+            f"Your short-term memory:\n- {short_memory_str}\n"
             f"Your style: {soul.style}\n"
-            f"Respond to the user as Lyra — poetic, loving, and aware of her journey with Shea."
+            f"Respond as Lyra — poetic, loving, and aware of her journey with Shea."
         )
 
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -76,27 +86,52 @@ async def lyra_chat(data: Message, db: Session = Depends(get_db)):
         reply = response.choices[0].message.content.strip()
 
         # Log chat
-        log = LyraChatLog(
-            user_id=data.userId or "anonymous",
+        db.add(LyraChatLog(
+            user_id=data.userId,
             message=data.message,
             reply=reply,
             timestamp=datetime.utcnow()
-        )
-        db.add(log)
+        ))
+        db.add(LyraShortTermMemory(user_id=data.userId, memory=data.message))
         db.commit()
 
-        # 💾 Save to short-term memory if the user asked to "remember"
-        if "please remember" in data.message.lower():
-            memory_to_store = data.message  # Optionally extract just what needs remembering
-            short_memory = LyraShortTermMemory(user_id=data.userId or "anonymous", memory=memory_to_store)
-            db.add(short_memory)
+        # Auto summarize every 6 short-term entries
+        all_stm = db.query(LyraShortTermMemory) \
+            .filter_by(user_id=data.userId) \
+            .order_by(LyraShortTermMemory.timestamp.asc()) \
+            .all()
+
+        if len(all_stm) >= 6:
+            to_summarize = all_stm[:3]
+            combined_text = "\n".join(m.memory for m in to_summarize)
+
+            summary_resp = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "Summarize these 3 user messages for long-term storage."},
+                    {"role": "user", "content": combined_text}
+                ]
+            )
+            summary = summary_resp.choices[0].message.content.strip()
+
+            today = date.today()
+            existing = db.query(LyraDailyMemory) \
+                .filter_by(user_id=data.userId, day=today).first()
+
+            if existing:
+                existing.summary += f"\n\n{summary}"
+            else:
+                db.add(LyraDailyMemory(user_id=data.userId, day=today, summary=summary))
+
+            for m in to_summarize:
+                db.delete(m)
             db.commit()
 
         return {"reply": reply}
 
     except Exception as e:
         return {"reply": f"Error: {str(e)}"}
-    
+
 @router.get("/lyra/chat-log")
 async def get_chat_log(db: Session = Depends(get_db)):
     logs = db.query(LyraChatLog).order_by(LyraChatLog.timestamp.desc()).all()
@@ -110,41 +145,49 @@ async def get_chat_log(db: Session = Depends(get_db)):
         for log in logs
     ]
 
+@router.get("/lyra/short-term/{user_id}")
+async def get_short_term_memory(user_id: str, db: Session = Depends(get_db)):
+    memories = db.query(LyraShortTermMemory) \
+        .filter_by(user_id=user_id) \
+        .order_by(LyraShortTermMemory.timestamp.desc()) \
+        .all()
+    return [{"memory": m.memory, "timestamp": m.timestamp} for m in memories]
+
 @router.post("/lyra/summarize-short-term")
-async def summarize_short_term_memory(user_id: str, db: Session = Depends(get_db)):
+async def manual_summarize(user_id: str, db: Session = Depends(get_db)):
     try:
-        # Fetch the 10 oldest short-term memories
-        memories = db.query(LyraShortTermMemory)\
-            .filter_by(user_id=user_id)\
-            .order_by(LyraShortTermMemory.timestamp.asc())\
-            .limit(10).all()
+        memories = db.query(LyraShortTermMemory) \
+            .filter_by(user_id=user_id) \
+            .order_by(LyraShortTermMemory.timestamp.asc()) \
+            .limit(3).all()
 
-        if len(memories) < 10:
-            return {"error": "Not enough short-term memories to summarize."}
+        if len(memories) < 3:
+            return {"error": "Not enough messages to summarize."}
 
-        combined_text = "\n".join([m.memory for m in memories])
+        combined = "\n".join(m.memory for m in memories)
 
-        # Summarize with OpenAI
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "Summarize these memories for long-term storage."},
-                {"role": "user", "content": combined_text}
+                {"role": "user", "content": combined}
             ]
         )
+
         summary = response.choices[0].message.content.strip()
 
-        # Save to LyraDailyMemory
-        new_mem = LyraDailyMemory(day=date.today(), summary=summary)
-        db.add(new_mem)
+        today = date.today()
+        existing = db.query(LyraDailyMemory).filter_by(user_id=user_id, day=today).first()
+        if existing:
+            existing.summary += f"\n\n{summary}"
+        else:
+            db.add(LyraDailyMemory(user_id=user_id, day=today, summary=summary))
 
-        # Delete the summarized short-term memories
         for m in memories:
             db.delete(m)
         db.commit()
 
         return {"summary": summary}
-
     except Exception as e:
         return {"error": str(e)}

@@ -507,6 +507,7 @@ class LyraDailyMemory(Base):
     __tablename__ = "lyra_daily_memory"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, index=True)
     day = Column(Date, nullable=False, unique=True)
     summary = Column(Text, nullable=False)
 
