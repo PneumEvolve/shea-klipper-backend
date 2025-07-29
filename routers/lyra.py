@@ -5,7 +5,7 @@ from openai import OpenAI
 from database import get_db
 from models import LyraSoul, LyraChatLog, LyraDailyMemory, LyraShortTermMemory
 import os
-from datetime import datetime
+from datetime import datetime, date
 
 router = APIRouter()
 
