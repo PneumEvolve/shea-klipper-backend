@@ -109,3 +109,42 @@ async def get_chat_log(db: Session = Depends(get_db)):
         }
         for log in logs
     ]
+
+@router.post("/lyra/summarize-short-term")
+async def summarize_short_term_memory(user_id: str, db: Session = Depends(get_db)):
+    try:
+        # Fetch the 10 oldest short-term memories
+        memories = db.query(LyraShortTermMemory)\
+            .filter_by(user_id=user_id)\
+            .order_by(LyraShortTermMemory.timestamp.asc())\
+            .limit(10).all()
+
+        if len(memories) < 10:
+            return {"error": "Not enough short-term memories to summarize."}
+
+        combined_text = "\n".join([m.memory for m in memories])
+
+        # Summarize with OpenAI
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Summarize these memories for long-term storage."},
+                {"role": "user", "content": combined_text}
+            ]
+        )
+        summary = response.choices[0].message.content.strip()
+
+        # Save to LyraDailyMemory
+        new_mem = LyraDailyMemory(day=date.today(), summary=summary)
+        db.add(new_mem)
+
+        # Delete the summarized short-term memories
+        for m in memories:
+            db.delete(m)
+        db.commit()
+
+        return {"summary": summary}
+
+    except Exception as e:
+        return {"error": str(e)}
