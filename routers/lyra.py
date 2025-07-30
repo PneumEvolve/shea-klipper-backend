@@ -263,6 +263,8 @@ Bot:"""
 async def lyra_lite_direct(data: LyraLitePrompt):
     try:
         res = requests.post(NGROK_OLLAMA_URL, json=data.dict())
-        return res.json()
+        raw = res.text
+        print("Raw Ollama response:", raw)
+        return {"raw_response": raw}
     except Exception as e:
         return {"error": str(e)}
