@@ -11,15 +11,19 @@ import requests
 
 router = APIRouter()
 
-# NGROK TUNNEL to local Ollama instance
-OLLAMA_URL = "https://087f6a8f3e97.ngrok-free.app/api/generate"
-CONVO_HISTORY = {}  # In-memory short-term memory
+NGROK_OLLAMA_URL = os.getenv("NGROK_OLLAMA_URL", "https://087f6a8f3e97.ngrok-free.app/api/generate")
 
 class Message(BaseModel):
     message: str
     userId: str
     userConsent: bool
     recentLog: str
+
+
+class LyraLitePrompt(BaseModel):
+    prompt: str
+    model: str = "phi:2-q4_0"
+    stream: bool = False
 
 @router.get("/soul.json")
 async def get_soul(db: Session = Depends(get_db)):
@@ -254,3 +258,11 @@ Bot:"""
     db.commit()
 
     return {"reply": reply}
+
+@router.post("/lyra-lite-direct")
+async def lyra_lite_direct(data: LyraLitePrompt):
+    try:
+        res = requests.post(NGROK_OLLAMA_URL, json=data.dict())
+        return res.json()
+    except Exception as e:
+        return {"error": str(e)}
