@@ -6,6 +6,7 @@ from database import get_db
 from models import LyraSoul, LyraChatLog, LyraDailyMemory, LyraShortTermMemory
 import os
 from datetime import datetime, date
+import json
 
 router = APIRouter()
 
@@ -19,7 +20,17 @@ class Message(BaseModel):
 async def get_soul(db: Session = Depends(get_db)):
     soul = db.query(LyraSoul).order_by(LyraSoul.created_at.desc()).first()
     if not soul:
-        return {}
+        with open("soul.json", "r") as f:
+            soul_data = json.load(f)
+        new_soul = LyraSoul(
+            tone=soul_data["tone"],
+            style=soul_data["style"],
+            beliefs=soul_data["beliefs"],
+            memory=soul_data["memory"]
+        )
+        db.add(new_soul)
+        db.commit()
+        return soul_data
     return {
         "tone": soul.tone,
         "style": soul.style,
@@ -27,6 +38,7 @@ async def get_soul(db: Session = Depends(get_db)):
         "memory": soul.memory,
         "created_at": soul.created_at
     }
+
 
 @router.get("/lyra-dreams.json")
 async def get_dreams(user_id: str, db: Session = Depends(get_db)):
