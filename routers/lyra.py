@@ -7,8 +7,13 @@ from models import LyraSoul, LyraChatLog, LyraDailyMemory, LyraShortTermMemory
 import os
 from datetime import datetime, date
 import json
+import requests
 
 router = APIRouter()
+
+# NGROK TUNNEL to local Ollama instance
+OLLAMA_URL = "https://087f6a8f3e97.ngrok-free.app/api/generate"
+CONVO_HISTORY = {}  # In-memory short-term memory
 
 class Message(BaseModel):
     message: str
@@ -203,3 +208,49 @@ async def manual_summarize(user_id: str, db: Session = Depends(get_db)):
         return {"summary": summary}
     except Exception as e:
         return {"error": str(e)}
+    
+@router.post("/lyra-lite")
+async def lyra_lite_chat(data: Message):
+    user_id = data.userId
+    message = data.message
+
+    if not user_id:
+        return {"reply": "You must be signed in to talk to Lyra."}
+
+    # Load or init memory
+    history = CONVO_HISTORY.get(user_id, [])
+
+    # Contextual memory injection (last 3 turns)
+    context = "\n".join([f"User: {h['user']}\nBot: {h['bot']}" for h in history[-3:]])
+    prompt = f"""You are Lyra, an assistant AI helping Shea build PneumEvolve.
+Respond clearly, kindly, and helpfully. You speak with a poetic, curious tone.
+
+{context}
+User: {message}
+Bot:"""
+
+    try:
+        res = requests.post(OLLAMA_URL, json={
+            "model": "phi:2-q4_0",
+            "prompt": prompt,
+            "stream": False
+        })
+        reply = res.json().get("response", "").strip()
+    except Exception as e:
+        reply = f"Error reaching local AI: {str(e)}"
+
+    # Save memory
+    history.append({"user": message, "bot": reply})
+    CONVO_HISTORY[user_id] = history
+
+    # Also log to database
+    db = next(get_db())
+    db.add(LyraChatLog(
+        user_id=user_id,
+        message=message,
+        reply=reply,
+        timestamp=datetime.utcnow()
+    ))
+    db.commit()
+
+    return {"reply": reply}
