@@ -48,17 +48,17 @@ async def lyra_chat(data: Message, db: Session = Depends(get_db)):
         beliefs_str = "\n- ".join(soul.beliefs)
         memory_str = "\n- ".join(soul.memory)
 
-        # Get last 3 short-term messages for user
+        # Short-term memory (last 3 messages)
         short_memories = db.query(LyraShortTermMemory) \
             .filter_by(user_id=data.userId) \
             .order_by(LyraShortTermMemory.timestamp.desc()) \
             .limit(3).all()
         short_memory_str = "\n- ".join(m.memory for m in reversed(short_memories))
 
-        # Get user's most recent long-term memory
+        # Fetch long-term memory (the single evolving memory)
         long_term = db.query(LyraDailyMemory) \
             .filter_by(user_id=data.userId) \
-            .order_by(LyraDailyMemory.day.desc()).first()
+            .first()
         long_term_str = long_term.summary if long_term else "No long-term memory yet."
 
         system_prompt = (
@@ -85,7 +85,7 @@ async def lyra_chat(data: Message, db: Session = Depends(get_db)):
 
         reply = response.choices[0].message.content.strip()
 
-        # Log chat
+        # Log chat + STM
         db.add(LyraChatLog(
             user_id=data.userId,
             message=data.message,
@@ -95,7 +95,7 @@ async def lyra_chat(data: Message, db: Session = Depends(get_db)):
         db.add(LyraShortTermMemory(user_id=data.userId, memory=data.message))
         db.commit()
 
-        # Auto summarize every 6 short-term entries
+        # Auto-summarize when STM reaches 6 entries
         all_stm = db.query(LyraShortTermMemory) \
             .filter_by(user_id=data.userId) \
             .order_by(LyraShortTermMemory.timestamp.asc()) \
@@ -108,20 +108,20 @@ async def lyra_chat(data: Message, db: Session = Depends(get_db)):
             summary_resp = client.chat.completions.create(
                 model="gpt-4",
                 messages=[
-                    {"role": "system", "content": "Summarize these 3 user messages for long-term storage."},
+                    {"role": "system", "content": "Summarize these 3 user messages for evolving long-term memory."},
                     {"role": "user", "content": combined_text}
                 ]
             )
             summary = summary_resp.choices[0].message.content.strip()
 
-            today = date.today()
+            # Merge into persistent long-term memory
             existing = db.query(LyraDailyMemory) \
-                .filter_by(user_id=data.userId, day=today).first()
+                .filter_by(user_id=data.userId).first()
 
             if existing:
                 existing.summary += f"\n\n{summary}"
             else:
-                db.add(LyraDailyMemory(user_id=data.userId, day=today, summary=summary))
+                db.add(LyraDailyMemory(user_id=data.userId, day=date(2000, 1, 1), summary=summary))  # dummy day
 
             for m in to_summarize:
                 db.delete(m)
