@@ -410,3 +410,4 @@ class LivingPlanSectionSchema(BaseModel):
 
     class Config:
         orm_mode = True
+

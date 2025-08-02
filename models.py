@@ -537,3 +537,27 @@ class LivingPlanSection(Base):
     tasks = Column(JSON, default=[])
     notes = Column(Text, default="")
     owner_email = Column(String, index=True)
+
+
+class Problem(Base):
+    __tablename__ = "problems"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), default="open")  # open, prioritizing, solving, solved
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    votes = relationship("ProblemVote", back_populates="problem")
+
+
+class ProblemVote(Base):
+    __tablename__ = "problem_votes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=False)
+    problem_id = Column(Integer, ForeignKey("problems.id"))
+    vote_type = Column(String, default="upvote")
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+    problem = relationship("Problem", back_populates="votes")
