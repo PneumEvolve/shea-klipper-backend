@@ -50,3 +50,11 @@ def apply_to_volunteer(application: schemas.VolunteerApplicationCreate, db: Sess
 @router.get("/volunteer", response_model=List[schemas.VolunteerApplicationOut])
 def get_all_applications(db: Session = Depends(get_db)):
     return db.query(models.VolunteerApplication).all()
+
+# Add this route to get a single garden by ID
+@router.get("/{garden_id}", response_model=schemas.GardenOut)
+def get_garden(garden_id: int, db: Session = Depends(get_db)):
+    garden = db.query(models.Garden).filter(models.Garden.id == garden_id).first()
+    if not garden:
+        raise HTTPException(status_code=404, detail="Garden not found")
+    return garden
