@@ -561,3 +561,13 @@ class ProblemVote(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     problem = relationship("Problem", back_populates="votes")
+
+class ForgeIdea(Base):
+    __tablename__ = "forge_ideas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    status = Column(String, default="Idea")  # Idea, Planning, In Progress, Done
+    votes = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -46,7 +46,8 @@ from routers import (
     lyra,
     inbox,
     living_plan,
-    problems
+    problems,
+    forge
 )
 
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -146,3 +147,4 @@ app.include_router(lyra.router)
 app.include_router(inbox.router)
 app.include_router(living_plan.router)
 app.include_router(problems.router)
+app.include_router(forge.router)
