@@ -571,3 +571,15 @@ class ForgeIdea(Base):
     status = Column(String, default="Idea")  # Idea, Planning, In Progress, Done
     votes = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class ForgeVote(Base):
+    __tablename__ = "forge_votes"
+    id = Column(Integer, primary_key=True)
+    user_email = Column(String, index=True)
+    idea_id = Column(Integer, ForeignKey("forge_ideas.id"))
+
+class ForgeWorker(Base):
+    __tablename__ = "forge_workers"
+    id = Column(Integer, primary_key=True)
+    user_email = Column(String, index=True)
+    idea_id = Column(Integer, ForeignKey("forge_ideas.id"))

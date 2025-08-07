@@ -1,77 +1,111 @@
-# /backend/routes/forge.py
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+# forge.py (FastAPI Router for Forge)
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from datetime import datetime
+from pydantic import BaseModel
+from models import ForgeIdea, ForgeVote, ForgeWorker
 from database import get_db
-from models import ForgeIdea
 
 router = APIRouter()
 
-# ------------------- MODELS -------------------
-class ForgeIdeaCreate(BaseModel):
+# === Pydantic Schemas ===
+class IdeaIn(BaseModel):
     title: str
     description: str
 
-class ForgeIdeaUpdate(BaseModel):
-    title: str | None = None
-    description: str | None = None
-    status: str | None = None
-    votes: int | None = None
+class IdeaOut(BaseModel):
+    id: int
+    title: str
+    description: str
+    status: str
+    votes: int
+    creator_email: str
 
-# ------------------- ROUTES -------------------
+# === Get All Ideas ===
+@router.get("/forge/ideas")
+def get_ideas(db: Session = Depends(get_db)):
+    ideas = db.query(ForgeIdea).all()
+    return [
+        {
+            "id": i.id,
+            "title": i.title,
+            "description": i.description,
+            "status": i.status,
+            "votes": i.votes,
+            "creator_email": i.creator_email
+        } for i in ideas
+    ]
 
+# === Submit New Idea ===
 @router.post("/forge/ideas")
-def create_idea(idea: ForgeIdeaCreate, db: Session = Depends(get_db)):
+def create_idea(idea: IdeaIn, request: Request, db: Session = Depends(get_db)):
+    user_email = request.headers.get("x-user-email")
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Login required to submit ideas.")
+
     new_idea = ForgeIdea(
         title=idea.title,
         description=idea.description,
-        status="Idea",
+        status="Proposed",
         votes=0,
-        created_at=datetime.utcnow(),
+        creator_email=user_email
     )
     db.add(new_idea)
     db.commit()
     db.refresh(new_idea)
-    return new_idea
+    return {"message": "Idea submitted."}
 
+# === Vote on an Idea ===
+@router.post("/forge/ideas/{idea_id}/vote")
+def vote_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
+    user_email = request.headers.get("x-user-email")
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Login required to vote.")
 
-@router.get("/forge/ideas")
-def get_all_ideas(db: Session = Depends(get_db)):
-    return db.query(ForgeIdea).order_by(ForgeIdea.created_at.desc()).all()
+    existing_vote = db.query(ForgeVote).filter_by(user_email=user_email, idea_id=idea_id).first()
+    if existing_vote:
+        raise HTTPException(status_code=400, detail="You have already voted on this idea.")
 
-
-@router.patch("/forge/ideas/{idea_id}")
-def update_idea(idea_id: int, updates: ForgeIdeaUpdate, db: Session = Depends(get_db)):
-    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
+    vote = ForgeVote(user_email=user_email, idea_id=idea_id)
+    idea = db.query(ForgeIdea).get(idea_id)
     if not idea:
-        raise HTTPException(status_code=404, detail="Idea not found")
+        raise HTTPException(status_code=404, detail="Idea not found.")
 
-    for field, value in updates.dict(exclude_unset=True).items():
-        setattr(idea, field, value)
-
+    idea.votes += 1
+    db.add(vote)
     db.commit()
-    db.refresh(idea)
-    return idea
+    return {"message": "Vote recorded."}
 
+# === Join Idea ===
+@router.post("/forge/ideas/{idea_id}/join")
+def join_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
+    user_email = request.headers.get("x-user-email")
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Login required.")
 
+    existing = db.query(ForgeWorker).filter_by(user_email=user_email, idea_id=idea_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Already joined this idea.")
+
+    join = ForgeWorker(user_email=user_email, idea_id=idea_id)
+    db.add(join)
+    db.commit()
+
+    # Optional: Send notification
+    print(f"📩 {user_email} wants to work on idea #{idea_id}")
+
+    return {"message": "You've joined this idea."}
+
+# === Delete Idea ===
 @router.delete("/forge/ideas/{idea_id}")
-def delete_idea(idea_id: int, db: Session = Depends(get_db)):
-    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
+def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
+    user_email = request.headers.get("x-user-email")
+    idea = db.query(ForgeIdea).get(idea_id)
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
+
+    if user_email != idea.creator_email and user_email != "sheaklipper@gmail.com":
+        raise HTTPException(status_code=403, detail="Not authorized to delete.")
 
     db.delete(idea)
     db.commit()
-    return {"message": "Idea deleted"}
-
-
-@router.post("/forge/ideas/{idea_id}/vote")
-def vote_idea(idea_id: int, db: Session = Depends(get_db)):
-    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
-    if not idea:
-        raise HTTPException(status_code=404, detail="Idea not found")
-
-    idea.votes += 1
-    db.commit()
-    return {"message": "Vote counted", "votes": idea.votes}
+    return {"message": "Idea deleted."}
