@@ -573,10 +573,6 @@ class ForgeIdea(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     user_email = Column(String, nullable=False)
 
-    @property
-    def creator_email(self) -> str:
-        # expose the API-facing name without changing the DB column
-        return self.user_email
 
 class ForgeVote(Base):
     __tablename__ = "forge_votes"
