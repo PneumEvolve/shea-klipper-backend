@@ -586,13 +586,15 @@ class ForgeVote(Base):
 
 class ForgeWorker(Base):
     __tablename__ = "forge_workers"
-
     id = Column(Integer, primary_key=True)
     user_email = Column(String, index=True)
     idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"))
+    
+    # ForeignKey to User model
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))  # Link to the User table
 
-    # Relationship with User model
-    user = relationship("User", foreign_keys=[user_email], back_populates="forge_workers")
+    # Relationship to User
+    user = relationship("User", back_populates="forge_workers")  # Ensure 'forge_workers' exists on User model
 
-    # Relationship with ForgeIdea model
-    idea = relationship("ForgeIdea", back_populates="workers")
+    # Relationship to ForgeIdea
+    idea = relationship("ForgeIdea", back_populates="workers")  # Ensure 'workers' exists on ForgeIdea model
