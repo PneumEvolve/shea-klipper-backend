@@ -105,7 +105,7 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Idea not found")
 
     # Allow the creator or 'sheaklipper@gmail.com' to delete the idea
-    if user_email != idea.creator_email and user_email != "sheaklipper@gmail.com":
+    if user_email != idea.user_email and user_email != "sheaklipper@gmail.com":
         raise HTTPException(status_code=403, detail="Not authorized to delete this idea.")
 
     db.delete(idea)
