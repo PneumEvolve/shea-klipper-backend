@@ -578,10 +578,10 @@ class ForgeVote(Base):
     __tablename__ = "forge_votes"
     id = Column(Integer, primary_key=True)
     user_email = Column(String, index=True)
-    idea_id = Column(Integer, ForeignKey("forge_ideas.id"))
+    idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"))
 
 class ForgeWorker(Base):
     __tablename__ = "forge_workers"
     id = Column(Integer, primary_key=True)
     user_email = Column(String, index=True)
-    idea_id = Column(Integer, ForeignKey("forge_ideas.id"))
+    idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"))

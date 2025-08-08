@@ -60,15 +60,20 @@ def update_idea(idea_id: int, updated_idea: IdeaIn, request: Request, db: Sessio
     user_email = request.headers.get("x-user-email")
     if not user_email:
         raise HTTPException(status_code=401, detail="Login required to update idea.")
-
+    
+    # Log the incoming email and the idea's creator email for debugging
+    print(f"Incoming user_email: {user_email}")
+    
     idea = db.query(ForgeIdea).get(idea_id)
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
+    
+    print(f"Idea creator_email: {idea.user_email}")
 
     # Check if the user is the creator
     if user_email != idea.user_email:
         raise HTTPException(status_code=403, detail="Not authorized to edit this idea.")
-
+    
     # Update the fields, preserving votes
     idea.title = updated_idea.title
     idea.description = updated_idea.description
