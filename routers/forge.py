@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage
+from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User
 from database import get_db
 from datetime import datetime
 
@@ -83,15 +83,25 @@ def update_idea(idea_id: int, updated_idea: IdeaIn, request: Request, db: Sessio
     return {"message": "Idea updated."}
 
 @router.get("/forge/ideas/{idea_id}")
-def get_idea_with_workers(idea_id: int, db: Session = Depends(get_db)):
-    idea = db.query(ForgeIdea).get(idea_id)
+def get_idea(idea_id: int, db: Session = Depends(get_db)):
+    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
 
-    # Fetch the workers for this idea
-    workers = [worker.user.username for worker in idea.workers]  # Access the related User and get the username
+    workers = db.query(ForgeWorker).filter(ForgeWorker.idea_id == idea_id).all()
+    workers_email = [worker.user_email for worker in workers]
 
-    return {"idea": idea, "workers": workers}
+    # Fetch the full user details for workers (optional)
+    worker_users = db.query(User).filter(User.email.in_(workers_email)).all()
+    workers_data = [{"email": worker.email, "username": worker.username} for worker in worker_users]
+
+    return {
+        "id": idea.id,
+        "title": idea.title,
+        "description": idea.description,
+        "user_email": idea.user_email,
+        "workers": workers_data,  # Adding workers data
+    }
 
 # === Vote on an Idea ===
 @router.post("/forge/ideas/{idea_id}/vote")
