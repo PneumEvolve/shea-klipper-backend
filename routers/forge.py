@@ -2,8 +2,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from models import ForgeIdea, ForgeVote, ForgeWorker
+from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage
 from database import get_db
+from datetime import datetime
 
 router = APIRouter()
 
@@ -54,6 +55,35 @@ def create_idea(idea: IdeaIn, request: Request, db: Session = Depends(get_db)):
     db.refresh(new_idea)
     return {"message": "Idea submitted."}
 
+@router.put("/forge/ideas/{idea_id}")
+def update_idea(idea_id: int, updated_idea: IdeaIn, request: Request, db: Session = Depends(get_db)):
+    user_email = request.headers.get("x-user-email")
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Login required to update idea.")
+
+    idea = db.query(ForgeIdea).get(idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    # Check if the user is the creator
+    if user_email != idea.user_email:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this idea.")
+
+    # Update the fields, preserving votes
+    idea.title = updated_idea.title
+    idea.description = updated_idea.description
+    db.commit()
+    db.refresh(idea)
+
+    return {"message": "Idea updated."}
+
+@router.get("/forge/ideas/{idea_id}")
+def get_idea(idea_id: int, db: Session = Depends(get_db)):
+    idea = db.query(ForgeIdea).get(idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+    return idea
+
 # === Vote on an Idea ===
 @router.post("/forge/ideas/{idea_id}/vote")
 def vote_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
@@ -82,20 +112,35 @@ def vote_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
 def join_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     user_email = request.headers.get("x-user-email")
     if not user_email:
-        raise HTTPException(status_code=401, detail="Login required.")
+        raise HTTPException(status_code=401, detail="Login required to join idea.")
 
+    # Check if the user has already joined the idea
     existing = db.query(ForgeWorker).filter_by(user_email=user_email, idea_id=idea_id).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Already joined this idea.")
+        raise HTTPException(status_code=400, detail="You have already joined this idea.")
 
+    # Add the user to the idea's workers list
     join = ForgeWorker(user_email=user_email, idea_id=idea_id)
     db.add(join)
     db.commit()
 
-    # Optional: Send notification
-    print(f"📩 {user_email} wants to work on idea #{idea_id}")
+    # Notify the creator of the idea
+    idea = db.query(ForgeIdea).get(idea_id)
+    if idea:
+        creator_email = idea.user_email  # Assumes creator's email is stored in `user_email` field
+        if creator_email and creator_email != user_email:
+            content = f"👥 {user_email} has joined your idea \"{idea.title}\". They want to work on it!"
+            
+            # Creating the inbox notification for the creator
+            inbox_message = InboxMessage(
+                user_email=creator_email,  # Sending the notification to the creator
+                content=content,
+                timestamp=datetime.utcnow()  # Adding the timestamp
+            )
+            db.add(inbox_message)
+            db.commit()
 
-    return {"message": "You've joined this idea."}
+    return {"message": "You've joined this idea and notified the creator."}
 
 
 # === Delete Idea ===
