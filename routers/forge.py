@@ -60,6 +60,8 @@ def vote_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     user_email = request.headers.get("x-user-email")
     if not user_email:
         raise HTTPException(status_code=401, detail="Login required to vote.")
+    
+    print(f"User email: {user_email}")  # Add this line to debug
 
     existing_vote = db.query(ForgeVote).filter_by(user_email=user_email, idea_id=idea_id).first()
     if existing_vote:
