@@ -31,7 +31,7 @@ def get_ideas(db: Session = Depends(get_db)):
             "description": i.description,
             "status": i.status,
             "votes": i.votes,
-            "creator_email": i.creator_email
+            "user_email": i.user_email
         } for i in ideas
     ]
 
