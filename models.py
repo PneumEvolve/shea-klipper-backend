@@ -50,6 +50,7 @@ class User(Base):
     resources = relationship("Resource", back_populates="user", cascade="all, delete")
     events = relationship("CommunityEvent", back_populates="user", cascade="all, delete")
     farm_game_state = relationship("FarmGameState", uselist=False, back_populates="user")
+    forge_workers = relationship("ForgeWorker", back_populates="user")
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -573,6 +574,9 @@ class ForgeIdea(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     user_email = Column(String, nullable=False)
 
+     # Reverse relationship to ForgeWorker
+    workers = relationship("ForgeWorker", back_populates="idea")
+
 
 class ForgeVote(Base):
     __tablename__ = "forge_votes"
@@ -582,6 +586,13 @@ class ForgeVote(Base):
 
 class ForgeWorker(Base):
     __tablename__ = "forge_workers"
+
     id = Column(Integer, primary_key=True)
     user_email = Column(String, index=True)
     idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"))
+
+    # Relationship with User model
+    user = relationship("User", foreign_keys=[user_email], back_populates="forge_workers")
+
+    # Relationship with ForgeIdea model
+    idea = relationship("ForgeIdea", back_populates="workers")

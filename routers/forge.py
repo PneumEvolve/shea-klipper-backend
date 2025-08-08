@@ -83,11 +83,15 @@ def update_idea(idea_id: int, updated_idea: IdeaIn, request: Request, db: Sessio
     return {"message": "Idea updated."}
 
 @router.get("/forge/ideas/{idea_id}")
-def get_idea(idea_id: int, db: Session = Depends(get_db)):
+def get_idea_with_workers(idea_id: int, db: Session = Depends(get_db)):
     idea = db.query(ForgeIdea).get(idea_id)
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
-    return idea
+
+    # Fetch the workers for this idea
+    workers = [worker.user.username for worker in idea.workers]  # Access the related User and get the username
+
+    return {"idea": idea, "workers": workers}
 
 # === Vote on an Idea ===
 @router.post("/forge/ideas/{idea_id}/vote")
