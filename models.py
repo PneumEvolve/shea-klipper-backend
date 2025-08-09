@@ -52,9 +52,9 @@ class User(Base):
     farm_game_state = relationship("FarmGameState", uselist=False, back_populates="user")
     forge_workers = relationship("ForgeWorker", back_populates="user")
     
-    conversations = relationship("Conversation", secondary="conversation_users", back_populates="users")
+    conversations = relationship("Conversation", secondary="conversation_users", back_populates="users", overlaps="conversation_users")
     inbox_messages = relationship("InboxMessage", back_populates="user")
-    conversation_users = relationship("ConversationUser", back_populates="user", overlaps="conversations")
+    conversation_users = relationship("ConversationUser", back_populates="user")
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -546,9 +546,10 @@ class Conversation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    users = relationship("User", secondary="conversation_users", back_populates="conversations")
-    messages = relationship("InboxMessage", back_populates="conversation", cascade="all, delete-orphan")
-    conversation_users = relationship("ConversationUser", back_populates="conversation")
+    
+    users = relationship("User", secondary="conversation_users", back_populates="conversations", overlaps="conversation_users")
+    messages = relationship("InboxMessage", back_populates="conversation")
+    conversation_users = relationship("ConversationUser", back_populates="conversation", overlaps="users")
 
     def __repr__(self):
         return f"<Conversation(id={self.id}, created_at={self.created_at})>"
