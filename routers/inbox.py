@@ -13,6 +13,9 @@ class MessageInput(BaseModel):
 
 @router.post("/inbox/send")
 def send_message(data: MessageInput, db=Depends(get_db)):
+    if not data.user_id or not data.content:
+        raise HTTPException(status_code=400, detail="User ID and content are required.")
+        
     msg = InboxMessage(user_id=data.user_id, content=data.content, timestamp=datetime.utcnow())
     db.add(msg)
     db.commit()
