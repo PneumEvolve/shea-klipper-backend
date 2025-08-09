@@ -577,6 +577,7 @@ class ForgeIdea(Base):
      # Reverse relationship to ForgeWorker
     votes = relationship("ForgeVote", back_populates="idea", cascade="all, delete-orphan")
     workers = relationship("ForgeWorker", back_populates="idea")
+    notes = relationship("ForgeIdeaNote", back_populates="idea", cascade="all, delete-orphan")
 
 
 class ForgeVote(Base):
@@ -615,3 +616,16 @@ class ForgeWorker(Base):
 
     # Relationship to ForgeIdea
     idea = relationship("ForgeIdea", back_populates="workers")  # Ensure 'workers' exists on ForgeIdea model
+
+class ForgeIdeaNote(Base):
+    __tablename__ = "forge_idea_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    content = Column(Text, nullable=False)  # Store the markdown content as text
+    idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"))
+
+    # Relationship to ForgeIdea model
+    idea = relationship("ForgeIdea", back_populates="notes")
+
+    def __repr__(self):
+        return f"<ForgeIdeaNote(idea_id={self.idea_id}, content={self.content[:20]}...)>"  # Show first 20 characters of content for quick inspection

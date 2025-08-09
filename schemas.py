@@ -411,3 +411,15 @@ class LivingPlanSectionSchema(BaseModel):
     class Config:
         orm_mode = True
 
+class ForgeIdeaNoteBase(BaseModel):
+    content: str
+
+class ForgeIdeaNoteCreate(ForgeIdeaNoteBase):
+    pass
+
+class ForgeIdeaNote(ForgeIdeaNoteBase):
+    id: int
+    idea_id: int
+
+    class Config:
+        orm_mode = True
