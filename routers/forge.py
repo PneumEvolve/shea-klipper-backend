@@ -45,18 +45,22 @@ class ForgeIdeaNote(ForgeIdeaNoteBase):
 @router.get("/forge/ideas")
 def get_ideas(db: Session = Depends(get_db)):
     # Load ideas with workers' usernames
-    ideas = db.query(ForgeIdea).options(joinedload(ForgeIdea.workers).joinedload(ForgeWorker.user)).all()
+    ideas = db.query(ForgeIdea).options(
+        joinedload(ForgeIdea.workers).joinedload(ForgeWorker.user)
+    ).all()
 
+    # Return ideas including the notes field
     return [
         {
             "id": i.id,
             "title": i.title,
             "description": i.description,
             "status": i.status,
-            "votes": i.votes,
+            "votes": i.votes_count,  # Update to 'votes_count' if that's the correct field
             "user_email": i.user_email,
+            "notes": i.notes,  # Add notes to the returned data
             "workers": [
-                {"email": worker.user_email, "username": worker.user.username}  # Return username here
+                {"email": worker.user_email, "username": worker.user.username} 
                 for worker in i.workers
             ]
         }
@@ -248,20 +252,15 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Idea deleted."}
 
-@router.post("/forge/ideas/{idea_id}/notes")
-async def create_note(idea_id: int, note_content: str, db: Session = Depends(get_db)):
-    # Fetch the ForgeIdea object
-    idea = db.query(ForgeIdea).get(idea_id)
+@router.post("/forge/ideas/{idea_id}")
+async def update_idea_notes(idea_id: int, note: dict, db: Session = Depends(get_db)):
+    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
-
-    # Update the notes column with the new content
-    if idea.notes:
-        idea.notes += f"\n{note_content}"  # Append new note
-    else:
-        idea.notes = note_content  # Set it as the first note
-
-    db.commit()  # Save changes
-    db.refresh(idea)  # Refresh the idea to get the updated value
-
-    return {"message": "Note created successfully", "notes": idea.notes}
+    
+    # Update the notes field directly
+    idea.notes = note.get("notes", "")
+    db.commit()
+    db.refresh(idea)
+    
+    return {"message": "Note updated successfully", "notes": idea.notes}
