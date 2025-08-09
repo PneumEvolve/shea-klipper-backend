@@ -26,19 +26,20 @@ class IdeaOut(BaseModel):
 class ForgeIdeaNoteBase(BaseModel):
     content: str
 
-class ForgeIdeaNoteCreate(BaseModel):
-    content: str
-    idea_id: int
-
     class Config:
-        orm_mode = True
+        orm_mode = True  # Ensure Pydantic models can handle SQLAlchemy models
+
+
+class ForgeIdeaNoteCreate(ForgeIdeaNoteBase):
+    idea_id: int  # Only need content and idea_id for creation
+
 
 class ForgeIdeaNote(ForgeIdeaNoteBase):
-    id: Optional[int]
+    id: int  # Will be added after creation in the database
     idea_id: int
 
     class Config:
-        orm_mode = True
+        orm_mode = True  # Enable ORM mode to handle SQLAlchemy model
 
 # === Get All Ideas ===
 @router.get("/forge/ideas")
@@ -247,11 +248,12 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Idea deleted."}
 
-@router.post("/forge/ideas/{idea_id}/notes")
+@router.post("/forge/ideas/{idea_id}/notes", response_model=ForgeIdeaNote)
 async def create_note(idea_id: int, note: ForgeIdeaNoteCreate, db: Session = Depends(get_db)):
     print(f"Received note content: {note.content}, idea_id: {idea_id}")  # Debugging
+    # Create new note in the database
     new_note = ForgeIdeaNote(content=note.content, idea_id=idea_id)
     db.add(new_note)
     db.commit()
-    db.refresh(new_note)  # This will get the 'id' from the DB
-    return {"message": "Note created successfully", "note": new_note}
+    db.refresh(new_note)  # This will fetch the 'id' after saving
+    return new_note  # Return the saved note
