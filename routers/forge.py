@@ -26,8 +26,12 @@ class IdeaOut(BaseModel):
 class ForgeIdeaNoteBase(BaseModel):
     content: str
 
-class ForgeIdeaNoteCreate(ForgeIdeaNoteBase):
-    pass
+class ForgeIdeaNoteCreate(BaseModel):
+    content: str
+    idea_id: int
+
+    class Config:
+        orm_mode = True
 
 class ForgeIdeaNote(ForgeIdeaNoteBase):
     id: Optional[int]
@@ -244,14 +248,10 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     return {"message": "Idea deleted."}
 
 @router.post("/forge/ideas/{idea_id}/notes")
-def create_note(idea_id: int, note: ForgeIdeaNoteCreate, db: Session = Depends(get_db)):
-    print(f"Received note content: {note.content}")  # Add a print to debug what's being sent
-    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
-    if not idea:
-        raise HTTPException(status_code=404, detail="Idea not found.")
-    
+async def create_note(idea_id: int, note: ForgeIdeaNoteCreate, db: Session = Depends(get_db)):
+    # Create a new note object with just the content and idea_id
     new_note = ForgeIdeaNote(content=note.content, idea_id=idea_id)
     db.add(new_note)
     db.commit()
-    db.refresh(new_note)
-    return new_note
+    db.refresh(new_note)  # This will get the 'id' from the DB
+    return {"message": "Note created successfully", "note": new_note}
