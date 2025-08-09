@@ -35,7 +35,7 @@ class ForgeIdeaNoteCreate(ForgeIdeaNoteBase):
 
 
 class ForgeIdeaNote(ForgeIdeaNoteBase):
-    id: int  # Will be added after creation in the database
+    id: Optional[int]  # Will be added after creation in the database
     idea_id: int
 
     class Config:
@@ -248,12 +248,11 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Idea deleted."}
 
-@router.post("/forge/ideas/{idea_id}/notes", response_model=ForgeIdeaNote)
+@router.post("/forge/ideas/{idea_id}/notes")
 async def create_note(idea_id: int, note: ForgeIdeaNoteCreate, db: Session = Depends(get_db)):
     print(f"Received note content: {note.content}, idea_id: {idea_id}")  # Debugging
-    # Create new note in the database
     new_note = ForgeIdeaNote(content=note.content, idea_id=idea_id)
     db.add(new_note)
     db.commit()
-    db.refresh(new_note)  # This will fetch the 'id' after saving
-    return new_note  # Return the saved note
+    db.refresh(new_note)  # This will get the 'id' from the DB
+    return {"message": "Note created successfully", "note": new_note}
