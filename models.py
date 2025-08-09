@@ -573,11 +573,12 @@ class ForgeIdea(Base):
     votes_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     user_email = Column(String, nullable=False)
+    notes = Column(Text, nullable=True)
+
 
      # Reverse relationship to ForgeWorker
     votes = relationship("ForgeVote", back_populates="idea", cascade="all, delete-orphan")
     workers = relationship("ForgeWorker", back_populates="idea")
-    notes = relationship("ForgeIdeaNote", back_populates="idea", cascade="all, delete-orphan")
 
 
 class ForgeVote(Base):

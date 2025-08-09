@@ -249,10 +249,19 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     return {"message": "Idea deleted."}
 
 @router.post("/forge/ideas/{idea_id}/notes")
-async def create_note(idea_id: int, note: ForgeIdeaNoteCreate, db: Session = Depends(get_db)):
-    print(f"Received note content: {note.content}, idea_id: {idea_id}")  # Debugging
-    new_note = ForgeIdeaNote(content=note.content, idea_id=idea_id)
-    db.add(new_note)
-    db.commit()
-    db.refresh(new_note)  # This will get the 'id' from the DB
-    return {"message": "Note created successfully", "note": new_note}
+async def create_note(idea_id: int, note_content: str, db: Session = Depends(get_db)):
+    # Fetch the ForgeIdea object
+    idea = db.query(ForgeIdea).get(idea_id)
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    # Update the notes column with the new content
+    if idea.notes:
+        idea.notes += f"\n{note_content}"  # Append new note
+    else:
+        idea.notes = note_content  # Set it as the first note
+
+    db.commit()  # Save changes
+    db.refresh(idea)  # Refresh the idea to get the updated value
+
+    return {"message": "Note created successfully", "notes": idea.notes}
