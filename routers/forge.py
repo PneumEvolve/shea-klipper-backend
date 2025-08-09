@@ -172,22 +172,21 @@ def join_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     return {"message": "You've joined this idea and notified the creator."}
 
 # Remove a user from being a worker in an idea
-@router.post("/forge/ideas/{idea_id}/remove_worker")
+@router.post("/forge/ideas/{idea_id}/remove-worker")
 def remove_worker(idea_id: int, request: Request, db: Session = Depends(get_db)):
     user_email = request.headers.get("x-user-email")
     if not user_email:
         raise HTTPException(status_code=401, detail="Login required to remove worker.")
 
-    # Check if the user is already a worker for the idea
+    # Find and remove the worker from the idea's workers list
     worker = db.query(ForgeWorker).filter_by(user_email=user_email, idea_id=idea_id).first()
     if not worker:
         raise HTTPException(status_code=400, detail="You are not a worker for this idea.")
 
-    # Remove the user from the workers
     db.delete(worker)
     db.commit()
 
-    return {"message": "You have been removed from this idea."}
+    return {"message": "You have left this idea."}
 
 
 # === Delete Idea ===
