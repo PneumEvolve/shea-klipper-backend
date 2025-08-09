@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User, ForgeIdeaNote
 from database import get_db
 from datetime import datetime
+from typing import Optional
 import uuid
 
 router = APIRouter()
@@ -29,7 +30,7 @@ class ForgeIdeaNoteCreate(ForgeIdeaNoteBase):
     pass
 
 class ForgeIdeaNote(ForgeIdeaNoteBase):
-    id: int
+    id: Optional[int]
     idea_id: int
 
     class Config:
