@@ -115,22 +115,13 @@ def get_idea(idea_id: int, db: Session = Depends(get_db)):
 @router.post("/forge/ideas/{idea_id}/vote")
 def vote_idea(idea_id: int, request: Request, response: Response, db: Session = Depends(get_db)):
     user_email = request.headers.get("x-user-email")
-    user_id = request.cookies.get("user_id")
+    user_id = request.cookies.get("user_id")  # Get user_id from cookies
 
-    if not user_email and not user_id:
-        raise HTTPException(status_code=401, detail="Login or anonymous user identification required.")
-
-    # If the user is anonymous and has no user_id, generate a new one and set a cookie
     if not user_id:
-        user_id = str(uuid.uuid4())  # Generate a unique ID for anonymous users
-        response.set_cookie(key="user_id", value=user_id, max_age=60*60*24*365, path="/", secure=True, samesite="None")  # Cookie lasts for 1 year
+        raise HTTPException(status_code=401, detail="Anonymous user identification required.")
 
-    # Now check for existing votes based on user_id or user_email
-    existing_vote = None
-    if user_id:
-        existing_vote = db.query(ForgeVote).filter_by(user_id=user_id, idea_id=idea_id).first()
-    elif user_email:
-        existing_vote = db.query(ForgeVote).filter_by(user_email=user_email, idea_id=idea_id).first()
+    # Check if the user has already voted on this idea using user_id
+    existing_vote = db.query(ForgeVote).filter_by(user_id=user_id, idea_id=idea_id).first()
 
     idea = db.query(ForgeIdea).get(idea_id)
     if not idea:
@@ -143,7 +134,7 @@ def vote_idea(idea_id: int, request: Request, response: Response, db: Session = 
         db.commit()
         return {"message": "Vote removed."}
     else:
-        # If the user hasn't voted, add their vote
+        # If the user hasn't voted yet, add their vote
         vote = ForgeVote(user_id=user_id, user_email=user_email, idea_id=idea_id)
         idea.votes += 1
         db.add(vote)
