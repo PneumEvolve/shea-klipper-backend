@@ -150,21 +150,21 @@ def join_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     db.add(join)
     db.commit()
 
-    # Notify the creator of the idea
+    # Fetch the idea to notify the creator
     idea = db.query(ForgeIdea).get(idea_id)
     if idea:
         creator_email = idea.user_email  # Assumes creator's email is stored in `user_email` field
         if creator_email and creator_email != user_email:
             content = f"👥 {user_email} has joined your idea \"{idea.title}\". They want to work on it!"
-
+            
             # Fetch the user_id for the creator from the User table
             creator = db.query(User).filter_by(email=creator_email).first()
             if creator:
-                # Creating the inbox notification for the creator
+                # Create the inbox message for the creator
                 inbox_message = InboxMessage(
-                    user_id=creator.id,  # Using the user_id, not user_email
+                    user_id=creator.id,  # Use the creator's user_id here
                     content=content,
-                    timestamp=datetime.utcnow()  # Adding the timestamp
+                    timestamp=datetime.utcnow()  # Add the current timestamp
                 )
                 db.add(inbox_message)
                 db.commit()
