@@ -53,7 +53,7 @@ class User(Base):
     forge_workers = relationship("ForgeWorker", back_populates="user")
     conversations = relationship("Conversation", secondary="conversation_users", back_populates="users")
     inbox_messages = relationship("InboxMessage", back_populates="user")
-    
+
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
         "Node",
@@ -533,7 +533,7 @@ class InboxMessage(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     read = Column(Boolean, default=False)
 
-    user = relationship("User", backref="inbox_messages")
+    user = relationship("User", back_populates="inbox_messages")
     conversation = relationship("Conversation", backref="messages")
 
     def __repr__(self):
