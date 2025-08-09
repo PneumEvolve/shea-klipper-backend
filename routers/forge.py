@@ -115,7 +115,10 @@ def get_idea(idea_id: int, db: Session = Depends(get_db)):
 @router.post("/forge/ideas/{idea_id}/vote")
 def vote_idea(idea_id: int, request: Request, response: Response, db: Session = Depends(get_db)):
     user_email = request.headers.get("x-user-email")
-    user_id = request.cookies.get("user_id")
+    user_id = request.cookies.get("user_id")  # Fetching the user_id from the cookies
+
+    print(f"User Email: {user_email}")  # Log the user email
+    print(f"User ID from Cookie: {user_id}")  # Log the user ID from cookies
 
     if not user_email and not user_id:
         raise HTTPException(status_code=401, detail="Login or anonymous user identification required.")
