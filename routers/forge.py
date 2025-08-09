@@ -119,19 +119,25 @@ def vote_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     
     print(f"User email: {user_email}")  # Add this line to debug
 
+    # Check if the user has already voted on this idea
     existing_vote = db.query(ForgeVote).filter_by(user_email=user_email, idea_id=idea_id).first()
-    if existing_vote:
-        raise HTTPException(status_code=400, detail="You have already voted on this idea.")
-
-    vote = ForgeVote(user_email=user_email, idea_id=idea_id)
     idea = db.query(ForgeIdea).get(idea_id)
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found.")
-
-    idea.votes += 1
-    db.add(vote)
-    db.commit()
-    return {"message": "Vote recorded."}
+    
+    if existing_vote:
+        # User has already voted, so we remove their vote
+        db.delete(existing_vote)
+        idea.votes -= 1
+        db.commit()
+        return {"message": "Vote removed."}
+    else:
+        # User hasn't voted yet, so we add their vote
+        vote = ForgeVote(user_email=user_email, idea_id=idea_id)
+        idea.votes += 1
+        db.add(vote)
+        db.commit()
+        return {"message": "Vote recorded."}
 
 # === Join Idea ===
 @router.post("/forge/ideas/{idea_id}/join")
