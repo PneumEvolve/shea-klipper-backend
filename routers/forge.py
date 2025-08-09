@@ -111,10 +111,14 @@ def update_idea(idea_id: int, updated_idea: IdeaIn, request: Request, db: Sessio
 
 @router.get("/forge/ideas/{idea_id}")
 def get_idea(idea_id: int, db: Session = Depends(get_db)):
+    # Query to fetch the ForgeIdea
     idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
+    
+    # If the idea is not found, raise a 404 error
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
-
+    
+    # Query to fetch the workers associated with this idea
     workers = db.query(ForgeWorker).filter(ForgeWorker.idea_id == idea_id).all()
     workers_email = [worker.user_email for worker in workers]
 
@@ -122,13 +126,14 @@ def get_idea(idea_id: int, db: Session = Depends(get_db)):
     worker_users = db.query(User).filter(User.email.in_(workers_email)).all()
     workers_data = [{"email": worker.email, "username": worker.username} for worker in worker_users]
 
+    # Return the idea along with the workers and notes data
     return {
         "id": idea.id,
         "title": idea.title,
         "description": idea.description,
         "user_email": idea.user_email,
         "workers": workers_data,  # Adding workers data
-        "notes": [{"id": note.id, "content": note.content} for note in idea.notes]
+        "notes": idea.notes  # Return the notes directly, since it's now part of the ForgeIdea model
     }
 
 # === Vote on an Idea ===
