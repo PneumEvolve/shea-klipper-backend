@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
-from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User, ForgeIdeaNote
+from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User
 from database import get_db
 from datetime import datetime
 from typing import Optional
