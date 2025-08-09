@@ -117,6 +117,9 @@ def vote_idea(idea_id: int, request: Request, response: Response, db: Session = 
     user_email = request.headers.get("x-user-email")
     user_id = request.cookies.get("user_id")  # Get user_id from cookies
 
+    # Debugging: Log the cookies to check if user_id is included
+    print(f"Received cookies: {request.cookies}")
+
     if not user_id:
         raise HTTPException(status_code=401, detail="Anonymous user identification required.")
 
