@@ -51,7 +51,9 @@ class User(Base):
     events = relationship("CommunityEvent", back_populates="user", cascade="all, delete")
     farm_game_state = relationship("FarmGameState", uselist=False, back_populates="user")
     forge_workers = relationship("ForgeWorker", back_populates="user")
-
+    conversations = relationship("Conversation", secondary="conversation_users", back_populates="users")
+    inbox_messages = relationship("InboxMessage", back_populates="user")
+    
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
         "Node",
@@ -523,11 +525,39 @@ class LyraWeeklyMemory(Base):
 
 class InboxMessage(Base):
     __tablename__ = "inbox_messages"
+
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, index=True)
-    content = Column(String)
-    timestamp = Column(DateTime)
+    content = Column(Text, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    conversation_id = Column(Integer, ForeignKey("conversations.id"))
+    timestamp = Column(DateTime, default=datetime.utcnow)
     read = Column(Boolean, default=False)
+
+    user = relationship("User", backref="inbox_messages")
+    conversation = relationship("Conversation", backref="messages")
+
+    def __repr__(self):
+        return f"<InboxMessage(id={self.id}, content={self.content[:20]}..., timestamp={self.timestamp}, read={self.read})>"
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    users = relationship("User", secondary="conversation_users")  # Many-to-many relationship with users
+
+    def __repr__(self):
+        return f"<Conversation(id={self.id}, created_at={self.created_at})>"
+    
+class ConversationUser(Base):
+    __tablename__ = "conversation_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    conversation_id = Column(Integer, ForeignKey("conversations.id"))
+
+    user = relationship("User", backref="conversation_users")
+    conversation = relationship("Conversation", backref="conversation_users")
 
 class LivingPlanSection(Base):
     __tablename__ = "living_plan_sections"
@@ -617,3 +647,4 @@ class ForgeWorker(Base):
 
     # Relationship to ForgeIdea
     idea = relationship("ForgeIdea", back_populates="workers")  # Ensure 'workers' exists on ForgeIdea model
+
