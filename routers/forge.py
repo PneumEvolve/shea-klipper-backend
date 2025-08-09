@@ -1,6 +1,6 @@
 # forge.py (FastAPI Router for Forge)
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User
 from database import get_db
@@ -24,7 +24,9 @@ class IdeaOut(BaseModel):
 # === Get All Ideas ===
 @router.get("/forge/ideas")
 def get_ideas(db: Session = Depends(get_db)):
-    ideas = db.query(ForgeIdea).all()
+    # Load ideas with workers information using joinedload
+    ideas = db.query(ForgeIdea).options(joinedload(ForgeIdea.workers)).all()
+    
     return [
         {
             "id": i.id,
@@ -32,8 +34,13 @@ def get_ideas(db: Session = Depends(get_db)):
             "description": i.description,
             "status": i.status,
             "votes": i.votes,
-            "user_email": i.user_email
-        } for i in ideas
+            "user_email": i.user_email,
+            "workers": [
+                {"email": worker.user_email}  # Customize to return the worker's data you need
+                for worker in i.workers
+            ]
+        }
+        for i in ideas
     ]
 
 # === Submit New Idea ===
