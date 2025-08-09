@@ -1,10 +1,11 @@
 # /routes/inbox.py
-from fastapi import APIRouter, Depends, HTTPException, Session
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
 from models import InboxMessage, Conversation, ConversationUser, User
 from database import get_db
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
