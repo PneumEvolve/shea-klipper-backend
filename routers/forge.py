@@ -44,17 +44,21 @@ class ForgeIdeaNote(ForgeIdeaNoteBase):
 # === Get All Ideas ===
 @router.get("/forge/ideas")
 def get_ideas(db: Session = Depends(get_db)):
-    ideas = db.query(ForgeIdea).all()
+    # Load ideas with the votes relationship
+    ideas = db.query(ForgeIdea).options(joinedload(ForgeIdea.votes)).all()
+
     return [
         {
             "id": i.id,
             "title": i.title,
             "description": i.description,
             "status": i.status,
-            "votes_count": i.votes_count,
-            "created_at": i.created_at,
+            "votes": [vote for vote in i.votes],  # Make sure votes are included
             "user_email": i.user_email,
-            "notes": i.notes,  # Directly fetch notes from the ForgeIdea model
+            "workers": [
+                {"email": worker.user_email, "username": worker.user.username}
+                for worker in i.workers
+            ]
         }
         for i in ideas
     ]
