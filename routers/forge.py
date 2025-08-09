@@ -130,15 +130,23 @@ def vote_idea(idea_id: int, request: Request, response: Response, db: Session = 
     if existing_vote:
         # If the user already voted, remove the vote and decrease the vote count
         db.delete(existing_vote)
-        idea.votes -= 1
         db.commit()
+
+        # Recalculate the votes_count after removing the vote
+        idea.votes_count = len(idea.votes)
+        db.commit()
+
         return {"message": "Vote removed."}
     else:
         # If the user hasn't voted yet, add their vote
         vote = ForgeVote(user_id=user_id, user_email=user_email, idea_id=idea_id)
-        idea.votes += 1
         db.add(vote)
         db.commit()
+
+        # Recalculate the votes_count after adding the vote
+        idea.votes_count = len(idea.votes)
+        db.commit()
+
         return {"message": "Vote recorded."}
 
 # === Join Idea ===
