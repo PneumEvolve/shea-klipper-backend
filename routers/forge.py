@@ -122,6 +122,7 @@ def get_idea(idea_id: int, db: Session = Depends(get_db)):
         "description": idea.description,
         "user_email": idea.user_email,
         "workers": workers_data,  # Adding workers data
+        "notes": [{"id": note.id, "content": note.content} for note in idea.notes]
     }
 
 # === Vote on an Idea ===
