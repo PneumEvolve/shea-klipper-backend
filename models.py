@@ -548,6 +548,7 @@ class Conversation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     users = relationship("User", secondary="conversation_users", back_populates="conversations")
     messages = relationship("InboxMessage", back_populates="conversation", cascade="all, delete-orphan")
+    conversation_users = relationship("ConversationUser", back_populates="conversation")
 
     def __repr__(self):
         return f"<Conversation(id={self.id}, created_at={self.created_at})>"
@@ -561,6 +562,7 @@ class ConversationUser(Base):
 
     user = relationship("User", back_populates="conversation_users", overlaps="conversations")
     conversation = relationship("Conversation", back_populates="conversation_users", overlaps="users")
+    
 
 class LivingPlanSection(Base):
     __tablename__ = "living_plan_sections"
