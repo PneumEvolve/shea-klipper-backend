@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User
+from schemas import ForgeIdeaNoteCreate, ForgeIdeaNote
 from database import get_db
 from datetime import datetime
 import uuid
@@ -227,3 +228,15 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     db.delete(idea)
     db.commit()
     return {"message": "Idea deleted."}
+
+@router.post("/forge/ideas/{idea_id}/notes")
+def create_note(idea_id: int, note: ForgeIdeaNoteCreate, db: Session = Depends(get_db)):
+    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found.")
+    
+    new_note = ForgeIdeaNote(content=note.content, idea_id=idea_id)
+    db.add(new_note)
+    db.commit()
+    db.refresh(new_note)
+    return new_note
