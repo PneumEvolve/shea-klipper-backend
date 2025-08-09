@@ -575,6 +575,7 @@ class ForgeIdea(Base):
     user_email = Column(String, nullable=False)
 
      # Reverse relationship to ForgeWorker
+    votes = relationship("ForgeVote", back_populates="idea", cascade="all, delete-orphan")
     workers = relationship("ForgeWorker", back_populates="idea")
 
 
