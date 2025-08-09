@@ -55,7 +55,7 @@ def create_idea(idea: IdeaIn, request: Request, db: Session = Depends(get_db)):
         title=idea.title,
         description=idea.description,
         status="Proposed",
-        votes=0,
+        votes_count=0,
         user_email=user_email
     )
     db.add(new_idea)
