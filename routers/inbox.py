@@ -1,4 +1,3 @@
-# /routes/inbox.py
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
@@ -12,7 +11,9 @@ router = APIRouter()
 class MessageInput(BaseModel):
     user_id: str
     content: str
+    conversation_id: int  # Added conversation_id to the message data
 
+# Check if conversation exists or create a new one
 @router.post("/inbox/start-conversation")
 def start_conversation(users: list[str], db: Session = Depends(get_db)):
     if len(users) < 2:
@@ -42,6 +43,7 @@ def start_conversation(users: list[str], db: Session = Depends(get_db)):
 
     return {"conversation_id": conversation.id}
 
+# Send message to a conversation
 @router.post("/inbox/send")
 def send_message(data: MessageInput, db: Session = Depends(get_db)):
     # Check if the conversation exists
@@ -55,6 +57,7 @@ def send_message(data: MessageInput, db: Session = Depends(get_db)):
     
     return {"status": "sent"}
 
+# Get all messages from a conversation
 @router.get("/inbox/{conversation_id}")
 def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db)):
     conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -74,6 +77,7 @@ def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db
         for m in messages
     ]
 
+# Get all messages in the inbox for a user
 @router.get("/inbox/{user_id}")
 def get_inbox(user_id: str, db=Depends(get_db)):
     messages = db.query(InboxMessage)\
@@ -91,6 +95,7 @@ def get_inbox(user_id: str, db=Depends(get_db)):
         for m in messages
     ]
 
+# Mark a message as read
 @router.post("/inbox/read/{message_id}")
 def mark_message_read(message_id: int, db: Session = Depends(get_db)):
     message = db.query(InboxMessage).filter(InboxMessage.id == message_id).first()
@@ -100,6 +105,7 @@ def mark_message_read(message_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "marked_as_read"}
 
+# Submit a contribution message
 @router.post("/inbox/contribute")
 def submit_contribution(data: dict, db=Depends(get_db)):
     content = f"""
