@@ -249,7 +249,7 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
 
 @router.post("/forge/ideas/{idea_id}/notes")
 async def create_note(idea_id: int, note: ForgeIdeaNoteCreate, db: Session = Depends(get_db)):
-    # Create a new note object with just the content and idea_id
+    print(f"Received note content: {note.content}, idea_id: {idea_id}")  # Debugging
     new_note = ForgeIdeaNote(content=note.content, idea_id=idea_id)
     db.add(new_note)
     db.commit()
