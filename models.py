@@ -53,6 +53,7 @@ class User(Base):
     forge_workers = relationship("ForgeWorker", back_populates="user")
     conversations = relationship("Conversation", secondary="conversation_users", back_populates="users")
     inbox_messages = relationship("InboxMessage", back_populates="user")
+    conversation_users = relationship("ConversationUser", back_populates="user")
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -534,7 +535,7 @@ class InboxMessage(Base):
     read = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="inbox_messages")
-    conversation = relationship("Conversation", backref="messages")
+    conversation = relationship("Conversation", back_populates="messages")
 
     def __repr__(self):
         return f"<InboxMessage(id={self.id}, content={self.content[:20]}..., timestamp={self.timestamp}, read={self.read})>"
@@ -544,7 +545,8 @@ class Conversation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    users = relationship("User", secondary="conversation_users")  # Many-to-many relationship with users
+    users = relationship("User", secondary="conversation_users", back_populates="conversations")
+    messages = relationship("InboxMessage", back_populates="conversation")  # Added relationship
 
     def __repr__(self):
         return f"<Conversation(id={self.id}, created_at={self.created_at})>"
@@ -556,8 +558,8 @@ class ConversationUser(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     conversation_id = Column(Integer, ForeignKey("conversations.id"))
 
-    user = relationship("User", backref="conversation_users")
-    conversation = relationship("Conversation", backref="conversation_users")
+    user = relationship("User", back_populates="conversation_users")
+    conversation = relationship("Conversation", back_populates="conversation_users")
 
 class LivingPlanSection(Base):
     __tablename__ = "living_plan_sections"
