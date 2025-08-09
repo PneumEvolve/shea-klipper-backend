@@ -1,10 +1,11 @@
 # forge.py (FastAPI Router for Forge)
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User
 from database import get_db
 from datetime import datetime
+import uuid
 
 router = APIRouter()
 
@@ -112,28 +113,35 @@ def get_idea(idea_id: int, db: Session = Depends(get_db)):
 
 # === Vote on an Idea ===
 @router.post("/forge/ideas/{idea_id}/vote")
-def vote_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
+def vote_idea(idea_id: int, request: Request, response: Response, db: Session = Depends(get_db)):
+    # Retrieve the anonymous user ID from a cookie (or header)
     user_email = request.headers.get("x-user-email")
-    if not user_email:
-        raise HTTPException(status_code=401, detail="Login required to vote.")
+    user_id = request.cookies.get("user_id")
     
-    print(f"User email: {user_email}")  # Add this line to debug
+    if not user_id and not user_email:
+        raise HTTPException(status_code=401, detail="Login or anonymous user identification required.")
+
+    # If the user is anonymous and has no user_id, generate a new one and set a cookie
+    if not user_id:
+        user_id = str(uuid.uuid4())  # Generate a unique ID for anonymous users
+        response.set_cookie(key="user_id", value=user_id, max_age=60*60*24*365)  # Cookie lasts for 1 year
 
     # Check if the user has already voted on this idea
-    existing_vote = db.query(ForgeVote).filter_by(user_email=user_email, idea_id=idea_id).first()
+    existing_vote = db.query(ForgeVote).filter_by(user_id=user_id, idea_id=idea_id).first() if not user_email else db.query(ForgeVote).filter_by(user_email=user_email, idea_id=idea_id).first()
+
     idea = db.query(ForgeIdea).get(idea_id)
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found.")
-    
+
     if existing_vote:
-        # User has already voted, so we remove their vote
+        # If the user already voted, remove the vote and decrease the vote count
         db.delete(existing_vote)
         idea.votes -= 1
         db.commit()
         return {"message": "Vote removed."}
     else:
-        # User hasn't voted yet, so we add their vote
-        vote = ForgeVote(user_email=user_email, idea_id=idea_id)
+        # If the user hasn't voted, add their vote
+        vote = ForgeVote(user_id=user_id, user_email=user_email, idea_id=idea_id)
         idea.votes += 1
         db.add(vote)
         db.commit()
