@@ -253,13 +253,19 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Idea deleted."}
 
+# Create a Pydantic model to handle the incoming request
+class NoteContent(BaseModel):
+    content: str
+
 @router.post("/forge/ideas/{idea_id}/notes")
-async def update_notes(idea_id: int, note_content: str, db: Session = Depends(get_db)):
+async def update_notes(idea_id: int, note_content: NoteContent, db: Session = Depends(get_db)):
+    # Fetch the idea from the database
     idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
-    
-    idea.notes = note_content  # Update the notes directly
-    db.commit()
-    db.refresh(idea)  # Ensure the idea is updated in the session
+
+    # Update the notes field in the ForgeIdea model
+    idea.notes = note_content.content  # Access content from the NoteContent model
+    db.commit()  # Save the changes to the database
+    db.refresh(idea)  # Refresh the idea instance to get updated data
     return {"message": "Note updated successfully", "idea": idea}
