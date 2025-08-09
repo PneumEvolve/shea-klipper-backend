@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User, ForgeIdeaNote
-from schemas import ForgeIdeaNoteCreate, ForgeIdeaNote
+from schemas import ForgeIdeaNoteCreate, ForgeIdeaNote, ForgeIdeaNoteBase
 from database import get_db
 from datetime import datetime
 import uuid
@@ -235,8 +235,9 @@ def create_note(idea_id: int, note: ForgeIdeaNoteCreate, db: Session = Depends(g
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found.")
     
+    # Create a new note
     new_note = ForgeIdeaNote(content=note.content, idea_id=idea_id)
     db.add(new_note)
     db.commit()
-    db.refresh(new_note)
-    return new_note
+    db.refresh(new_note)  # Refresh to get the auto-generated 'id'
+    return new_note  # Return the created note
