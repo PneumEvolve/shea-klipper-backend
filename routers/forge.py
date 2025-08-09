@@ -145,12 +145,13 @@ def vote_idea(idea_id: int, request: Request, response: Response, db: Session = 
     if not user_id:
         raise HTTPException(status_code=401, detail="Anonymous user identification required.")
 
-    # Check if the user has already voted on this idea using user_id
-    existing_vote = db.query(ForgeVote).filter_by(user_id=user_id, idea_id=idea_id).first()
-
+    # Fetch the idea
     idea = db.query(ForgeIdea).get(idea_id)
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found.")
+
+    # Check if the user has already voted on this idea using user_id
+    existing_vote = db.query(ForgeVote).filter_by(user_id=user_id, idea_id=idea_id).first()
 
     if existing_vote:
         # If the user already voted, remove the vote and decrease the vote count
