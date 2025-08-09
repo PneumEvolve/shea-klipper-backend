@@ -51,9 +51,10 @@ class User(Base):
     events = relationship("CommunityEvent", back_populates="user", cascade="all, delete")
     farm_game_state = relationship("FarmGameState", uselist=False, back_populates="user")
     forge_workers = relationship("ForgeWorker", back_populates="user")
+    
     conversations = relationship("Conversation", secondary="conversation_users", back_populates="users")
     inbox_messages = relationship("InboxMessage", back_populates="user")
-    conversation_users = relationship("ConversationUser", back_populates="user")
+    conversation_users = relationship("ConversationUser", back_populates="user", overlaps="conversations")
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -546,7 +547,7 @@ class Conversation(Base):
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     users = relationship("User", secondary="conversation_users", back_populates="conversations")
-    messages = relationship("InboxMessage", back_populates="conversation")  # Added relationship
+    messages = relationship("InboxMessage", back_populates="conversation", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Conversation(id={self.id}, created_at={self.created_at})>"
@@ -558,8 +559,8 @@ class ConversationUser(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     conversation_id = Column(Integer, ForeignKey("conversations.id"))
 
-    user = relationship("User", back_populates="conversation_users")
-    conversation = relationship("Conversation", back_populates="conversation_users")
+    user = relationship("User", back_populates="conversation_users", overlaps="conversations")
+    conversation = relationship("Conversation", back_populates="conversation_users", overlaps="users")
 
 class LivingPlanSection(Base):
     __tablename__ = "living_plan_sections"
