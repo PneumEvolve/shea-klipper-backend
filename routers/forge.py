@@ -24,9 +24,9 @@ class IdeaOut(BaseModel):
 # === Get All Ideas ===
 @router.get("/forge/ideas")
 def get_ideas(db: Session = Depends(get_db)):
-    # Load ideas with workers information using joinedload
-    ideas = db.query(ForgeIdea).options(joinedload(ForgeIdea.workers)).all()
-    
+    # Load ideas with workers' usernames
+    ideas = db.query(ForgeIdea).options(joinedload(ForgeIdea.workers).joinedload(ForgeWorker.user)).all()
+
     return [
         {
             "id": i.id,
@@ -36,7 +36,7 @@ def get_ideas(db: Session = Depends(get_db)):
             "votes": i.votes,
             "user_email": i.user_email,
             "workers": [
-                {"email": worker.user_email}  # Customize to return the worker's data you need
+                {"email": worker.user_email, "username": worker.user.username}  # Return username here
                 for worker in i.workers
             ]
         }
