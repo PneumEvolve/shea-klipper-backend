@@ -44,25 +44,17 @@ class ForgeIdeaNote(ForgeIdeaNoteBase):
 # === Get All Ideas ===
 @router.get("/forge/ideas")
 def get_ideas(db: Session = Depends(get_db)):
-    # Load ideas with workers' usernames
-    ideas = db.query(ForgeIdea).options(
-        joinedload(ForgeIdea.workers).joinedload(ForgeWorker.user)
-    ).all()
-
-    # Return ideas including the notes field
+    ideas = db.query(ForgeIdea).all()
     return [
         {
             "id": i.id,
             "title": i.title,
             "description": i.description,
             "status": i.status,
-            "votes": i.votes_count,  # Update to 'votes_count' if that's the correct field
+            "votes_count": i.votes_count,
+            "created_at": i.created_at,
             "user_email": i.user_email,
-            "notes": i.notes,  # Add notes to the returned data
-            "workers": [
-                {"email": worker.user_email, "username": worker.user.username} 
-                for worker in i.workers
-            ]
+            "notes": i.notes,  # Directly fetch notes from the ForgeIdea model
         }
         for i in ideas
     ]
@@ -252,15 +244,13 @@ def delete_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Idea deleted."}
 
-@router.post("/forge/ideas/{idea_id}")
-async def update_idea_notes(idea_id: int, note: dict, db: Session = Depends(get_db)):
+@router.post("/forge/ideas/{idea_id}/notes")
+async def update_notes(idea_id: int, note_content: str, db: Session = Depends(get_db)):
     idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
     if not idea:
         raise HTTPException(status_code=404, detail="Idea not found")
     
-    # Update the notes field directly
-    idea.notes = note.get("notes", "")
+    idea.notes = note_content  # Update the notes directly
     db.commit()
-    db.refresh(idea)
-    
-    return {"message": "Note updated successfully", "notes": idea.notes}
+    db.refresh(idea)  # Ensure the idea is updated in the session
+    return {"message": "Note updated successfully", "idea": idea}

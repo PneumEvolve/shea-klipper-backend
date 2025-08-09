@@ -617,15 +617,3 @@ class ForgeWorker(Base):
 
     # Relationship to ForgeIdea
     idea = relationship("ForgeIdea", back_populates="workers")  # Ensure 'workers' exists on ForgeIdea model
-
-class ForgeIdeaNote(Base):
-    __tablename__ = "forge_idea_notes"
-
-    id = Column(Integer, primary_key=True, index=True)  # Ensure autoincrement is enabled
-    content = Column(Text, nullable=False)
-    idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"))
-    
-    idea = relationship("ForgeIdea", back_populates="notes")
-
-    def __repr__(self):
-        return f"<ForgeIdeaNote(id={self.id}, idea_id={self.idea_id}, content={self.content[:20]}...)>"
