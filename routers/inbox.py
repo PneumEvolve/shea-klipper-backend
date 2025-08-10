@@ -383,3 +383,24 @@ def get_dm_thread(
             "from_email": m.user.email if m.user else None,
         } for m in msgs]
     }
+
+@router.get("/conversations/{conversation_id}/messages")
+def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db)):
+    system_user = get_or_create_system_user(db)
+    msgs = (
+        db.query(InboxMessage)
+        .filter(InboxMessage.conversation_id == conversation_id)
+        .order_by(InboxMessage.timestamp.asc())
+        .all()
+    )
+    return [
+        {
+            "id": m.id,
+            "content": m.content,
+            "timestamp": m.timestamp,
+            "read": m.read,
+            "from_email": m.user.email if m.user else None,
+            "from_system": (m.user_id == system_user.id),
+        }
+        for m in msgs
+    ]
