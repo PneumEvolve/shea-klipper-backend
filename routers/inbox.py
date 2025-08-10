@@ -8,6 +8,7 @@ from sqlalchemy import func, distinct
 
 from models import InboxMessage, Conversation, ConversationUser, User
 from database import get_db
+from models import ForgeIdea as IdeaModel
 
 router = APIRouter()
 
@@ -28,6 +29,10 @@ class IdeaSendIn(BaseModel):
 
 
 # ========= Helpers =========
+
+def get_idea_title(db: Session, idea_id: int) -> str:
+    row = db.query(IdeaModel).filter(IdeaModel.id == idea_id).first()
+    return (row.title or f"Idea #{idea_id}") if row else f"Idea #{idea_id}"
 
 def get_user_by_email(db: Session, email: str) -> User:
     user = db.query(User).filter(User.email == email).first()
@@ -325,16 +330,12 @@ def send_dm(payload: DMSendIn, db: Session = Depends(get_db)):
 def conversation_summaries(user_email: str, db: Session = Depends(get_db)):
     me = get_user_by_email(db, user_email)
 
-    # All conversation ids for this user
-    convo_ids = [cid for (cid,) in (
-        db.query(ConversationUser.conversation_id)
-          .filter(ConversationUser.user_id == me.id)
-          .all()
-    )]
+    convo_ids = [cid for (cid,) in db.query(ConversationUser.conversation_id)
+                                 .filter(ConversationUser.user_id == me.id)
+                                 .all()]
     if not convo_ids:
         return []
 
-    # Last message per convo
     sub_last = (
         db.query(
             InboxMessage.conversation_id,
@@ -345,12 +346,13 @@ def conversation_summaries(user_email: str, db: Session = Depends(get_db)):
         .subquery()
     )
 
-    # Pull the last messages and eager-load relationships to avoid N+1
     last_msgs = (
         db.query(InboxMessage)
           .options(
-              selectinload(InboxMessage.conversation).selectinload(Conversation.conversation_users).selectinload(ConversationUser.user),
-              selectinload(InboxMessage.user)
+              selectinload(InboxMessage.conversation)
+                  .selectinload(Conversation.conversation_users)
+                  .selectinload(ConversationUser.user),
+              selectinload(InboxMessage.user),
           )
           .join(
               sub_last,
@@ -360,7 +362,6 @@ def conversation_summaries(user_email: str, db: Session = Depends(get_db)):
           .all()
     )
 
-    # Unread counts per convo (global read flag in your current schema)
     unread_map = {
         cid: cnt
         for cid, cnt in (
@@ -379,31 +380,45 @@ def conversation_summaries(user_email: str, db: Session = Depends(get_db)):
         convo = m.conversation
         cname = convo.name if convo else None
 
-        # Default labels
         other_email = None
         other_username = None
         other_display = None
+        idea_id = None
+        idea_title = None
 
         if cname and cname.startswith("dm:"):
-            # Find "the other" participant
             for cu in convo.conversation_users:
                 if cu.user and cu.user.email != user_email:
                     other_email = cu.user.email
                     other_username = cu.user.username
                     break
             other_display = other_username or other_email or "Chat"
+
         elif cname and cname.startswith("system:"):
             other_display = "System"
 
+        elif cname and cname.startswith("idea:"):
+            try:
+                idea_id = int(cname.split(":", 1)[1])
+            except Exception:
+                idea_id = None
+            if idea_id is not None:
+                idea_title = get_idea_title(db, idea_id)
+                other_display = idea_title or f"Idea #{idea_id}"
+            else:
+                other_display = "Idea"
+
         out.append({
             "conversation_id": m.conversation_id,
-            "conversation_name": cname,                # e.g., system:{id} or dm:a:b
+            "conversation_name": cname,      # system:{id}, dm:..., idea:{id}
             "last_content": m.content,
             "last_timestamp": m.timestamp,
             "unread_count": unread_map.get(m.conversation_id, 0),
-            "other_email": other_email,                # for DMs
-            "other_username": other_username,          # for DMs
-            "other_display": other_display,            # what the UI should show by default
+            "other_email": other_email,
+            "other_username": other_username,
+            "other_display": other_display,  # what the UI should show
+            "idea_id": idea_id,
+            "idea_title": idea_title,
         })
 
     out.sort(key=lambda x: x["last_timestamp"] or datetime.min, reverse=True)
@@ -520,11 +535,12 @@ def send_to_conversation(conversation_id: int, data: ConversationSendIn, db: Ses
 
 @router.get("/ideas/{idea_id}/conversation")
 def get_idea_conversation(idea_id: int, db: Session = Depends(get_db)):
-    """
-    Return the conversation_id for this idea (create it if missing).
-    """
     convo = get_or_create_idea_conversation(db, idea_id)
-    return {"conversation_id": convo.id, "conversation_name": convo.name}
+    return {
+        "conversation_id": convo.id,
+        "conversation_name": convo.name,                 # e.g., "idea:6"
+        "conversation_title": get_idea_title(db, idea_id)  # human-friendly title
+    }
 
 
 @router.get("/ideas/{idea_id}/conversation/messages")
