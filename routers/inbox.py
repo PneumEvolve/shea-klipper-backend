@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import Optional
 from sqlalchemy import func, distinct
 
@@ -304,57 +304,89 @@ def send_dm(payload: DMSendIn, db: Session = Depends(get_db)):
 
 @router.get("/conversations/summaries/{user_email}")
 def conversation_summaries(user_email: str, db: Session = Depends(get_db)):
-    user = get_user_by_email(db, user_email)
+    me = get_user_by_email(db, user_email)
 
-    # all convo ids for this user
-    convo_ids = [cid for (cid,) in db.query(ConversationUser.conversation_id)
-                                 .filter(ConversationUser.user_id == user.id).all()]
+    # All conversation ids for this user
+    convo_ids = [cid for (cid,) in (
+        db.query(ConversationUser.conversation_id)
+          .filter(ConversationUser.user_id == me.id)
+          .all()
+    )]
     if not convo_ids:
         return []
 
-    # last message per convo
-    sub_last = (db.query(InboxMessage.conversation_id,
-                         func.max(InboxMessage.timestamp).label("last_ts"))
-                  .filter(InboxMessage.conversation_id.in_(convo_ids))
-                  .group_by(InboxMessage.conversation_id)
-                  .subquery())
+    # Last message per convo
+    sub_last = (
+        db.query(
+            InboxMessage.conversation_id,
+            func.max(InboxMessage.timestamp).label("last_ts"),
+        )
+        .filter(InboxMessage.conversation_id.in_(convo_ids))
+        .group_by(InboxMessage.conversation_id)
+        .subquery()
+    )
 
-    last_msgs = (db.query(InboxMessage)
-                   .join(sub_last, (InboxMessage.conversation_id == sub_last.c.conversation_id) &
-                                   (InboxMessage.timestamp == sub_last.c.last_ts))
-                   .all())
+    # Pull the last messages and eager-load relationships to avoid N+1
+    last_msgs = (
+        db.query(InboxMessage)
+          .options(
+              selectinload(InboxMessage.conversation).selectinload(Conversation.conversation_users).selectinload(ConversationUser.user),
+              selectinload(InboxMessage.user)
+          )
+          .join(
+              sub_last,
+              (InboxMessage.conversation_id == sub_last.c.conversation_id)
+              & (InboxMessage.timestamp == sub_last.c.last_ts),
+          )
+          .all()
+    )
 
-    # unread per convo (NOTE: your schema has a global msg.read; if you want per-user read later,
-    # add a ConversationRead table. For now we count global unread.)
-    unread_map = {cid: cnt for cid, cnt in
-                  db.query(InboxMessage.conversation_id, func.count(InboxMessage.id))
-                    .filter(InboxMessage.conversation_id.in_(convo_ids),
-                            InboxMessage.read == False)  # noqa: E712
-                    .group_by(InboxMessage.conversation_id)
-                    .all()}
+    # Unread counts per convo (global read flag in your current schema)
+    unread_map = {
+        cid: cnt
+        for cid, cnt in (
+            db.query(InboxMessage.conversation_id, func.count(InboxMessage.id))
+              .filter(
+                  InboxMessage.conversation_id.in_(convo_ids),
+                  InboxMessage.read == False,  # noqa: E712
+              )
+              .group_by(InboxMessage.conversation_id)
+              .all()
+        )
+    }
 
-    # build summary
     out = []
     for m in last_msgs:
         convo = m.conversation
-        # derive "other" participant for DMs
+        cname = convo.name if convo else None
+
+        # Default labels
         other_email = None
-        if convo and convo.name and convo.name.startswith("dm:"):
-            # pull both participants and pick the non-self
-            participants = [cu.user for cu in convo.conversation_users]
-            for u in participants:
-                if u.email != user_email:
-                    other_email = u.email
+        other_username = None
+        other_display = None
+
+        if cname and cname.startswith("dm:"):
+            # Find "the other" participant
+            for cu in convo.conversation_users:
+                if cu.user and cu.user.email != user_email:
+                    other_email = cu.user.email
+                    other_username = cu.user.username
                     break
+            other_display = other_username or other_email or "Chat"
+        elif cname and cname.startswith("system:"):
+            other_display = "System"
+
         out.append({
             "conversation_id": m.conversation_id,
-            "conversation_name": convo.name if convo else None,  # "system:{id}" or "dm:a:b"
+            "conversation_name": cname,                # e.g., system:{id} or dm:a:b
             "last_content": m.content,
             "last_timestamp": m.timestamp,
             "unread_count": unread_map.get(m.conversation_id, 0),
-            "other_email": other_email,  # helps UI label DM
+            "other_email": other_email,                # for DMs
+            "other_username": other_username,          # for DMs
+            "other_display": other_display,            # what the UI should show by default
         })
-    # newest first
+
     out.sort(key=lambda x: x["last_timestamp"] or datetime.min, reverse=True)
     return out
 
@@ -389,18 +421,26 @@ def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db
     system_user = get_or_create_system_user(db)
     msgs = (
         db.query(InboxMessage)
-        .filter(InboxMessage.conversation_id == conversation_id)
-        .order_by(InboxMessage.timestamp.asc())
-        .all()
+          .options(selectinload(InboxMessage.user))
+          .filter(InboxMessage.conversation_id == conversation_id)
+          .order_by(InboxMessage.timestamp.asc())
+          .all()
     )
-    return [
-        {
+    out = []
+    for m in msgs:
+        from_email = m.user.email if m.user else None
+        from_username = m.user.username if m.user else None
+        if m.user_id == system_user.id:
+            from_display = "System"
+        else:
+            from_display = from_username or from_email or "User"
+        out.append({
             "id": m.id,
             "content": m.content,
             "timestamp": m.timestamp,
             "read": m.read,
-            "from_email": m.user.email if m.user else None,
-            "from_system": (m.user_id == system_user.id),
-        }
-        for m in msgs
-    ]
+            "from_email": from_email,
+            "from_username": from_username,
+            "from_display": from_display,
+        })
+    return out
