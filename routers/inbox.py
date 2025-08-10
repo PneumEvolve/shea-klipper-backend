@@ -22,6 +22,10 @@ class DMSendIn(BaseModel):
     recipient_email: str
     content: str
 
+class IdeaSendIn(BaseModel):
+    sender_email: str
+    content: str
+
 
 # ========= Helpers =========
 
@@ -140,6 +144,21 @@ def get_or_create_dm_conversation(db: Session, a: User, b: User) -> Conversation
     db.refresh(convo)
     return convo
 
+def get_or_create_idea_conversation(db: Session, idea_id: int) -> Conversation:
+    """
+    One conversation per idea, named 'idea:{idea_id}'.
+    We don't attach participants on creation; we add people when they send or 'follow'.
+    """
+    key = f"idea:{idea_id}"
+    convo = db.query(Conversation).filter(Conversation.name == key).first()
+    if convo:
+        return convo
+
+    convo = Conversation(name=key)
+    db.add(convo)
+    db.commit()
+    db.refresh(convo)
+    return convo
 
 # ========= Routes =========
 
@@ -498,3 +517,110 @@ def send_to_conversation(conversation_id: int, data: ConversationSendIn, db: Ses
             "from_display": from_display,
         },
     }
+
+@router.get("/ideas/{idea_id}/conversation")
+def get_idea_conversation(idea_id: int, db: Session = Depends(get_db)):
+    """
+    Return the conversation_id for this idea (create it if missing).
+    """
+    convo = get_or_create_idea_conversation(db, idea_id)
+    return {"conversation_id": convo.id, "conversation_name": convo.name}
+
+
+@router.get("/ideas/{idea_id}/conversation/messages")
+def get_idea_conversation_messages(idea_id: int, db: Session = Depends(get_db)):
+    """
+    Return messages for the idea's conversation.
+    Signed-in not strictly required to read; lock down if you prefer.
+    """
+    system_user = get_or_create_system_user(db)  # for from_system flag if you ever post system events
+    convo = get_or_create_idea_conversation(db, idea_id)
+
+    msgs = (
+        db.query(InboxMessage)
+        .options(selectinload(InboxMessage.user))
+        .filter(InboxMessage.conversation_id == convo.id)
+        .order_by(InboxMessage.timestamp.asc())
+        .all()
+    )
+    return [
+        {
+            "id": m.id,
+            "content": m.content,
+            "timestamp": m.timestamp,
+            "read": m.read,
+            "from_email": m.user.email if m.user else None,
+            "from_username": m.user.username if m.user else None,
+            "from_system": (m.user_id == system_user.id),
+            "from_display": (
+                "System"
+                if m.user_id == system_user.id
+                else (m.user.username or (m.user.email if m.user else "User"))
+            ),
+        }
+        for m in msgs
+    ]
+
+
+@router.post("/ideas/{idea_id}/conversation/send")
+def send_to_idea_conversation(idea_id: int, payload: IdeaSendIn, db: Session = Depends(get_db)):
+    """
+    Send a message into the idea conversation.
+    Automatically enrolls the sender as a participant so it appears in their feed.
+    """
+    sender = get_user_by_email(db, payload.sender_email)
+    convo = get_or_create_idea_conversation(db, idea_id)
+
+    # Ensure membership exists so convo shows up in the user's feed
+    link = (
+        db.query(ConversationUser)
+        .filter(ConversationUser.conversation_id == convo.id, ConversationUser.user_id == sender.id)
+        .first()
+    )
+    if not link:
+        db.add(ConversationUser(user_id=sender.id, conversation_id=convo.id))
+
+    msg = InboxMessage(
+        user_id=sender.id,
+        conversation_id=convo.id,
+        content=payload.content,
+        timestamp=datetime.utcnow(),
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+
+    return {
+        "status": "ok",
+        "conversation_id": convo.id,
+        "message": {
+            "id": msg.id,
+            "content": msg.content,
+            "timestamp": msg.timestamp,
+            "read": msg.read,
+            "from_email": sender.email,
+            "from_username": sender.username,
+            "from_display": sender.username or sender.email or "You",
+        },
+    }
+
+
+@router.post("/ideas/{idea_id}/conversation/join")
+def join_idea_conversation(idea_id: int, user_email: str, db: Session = Depends(get_db)):
+    """
+    Optional: let users follow an idea thread without sending a message yet.
+    """
+    user = get_user_by_email(db, user_email)
+    convo = get_or_create_idea_conversation(db, idea_id)
+
+    exists = (
+        db.query(ConversationUser)
+        .filter(ConversationUser.conversation_id == convo.id, ConversationUser.user_id == user.id)
+        .first()
+    )
+    if exists:
+        return {"status": "ok", "message": "already_member", "conversation_id": convo.id}
+
+    db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
+    db.commit()
+    return {"status": "ok", "message": "joined", "conversation_id": convo.id}
