@@ -51,7 +51,7 @@ def start_conversation(data: MessageInput, db: Session = Depends(get_db)):
     db.add(conversation_user)
     db.add(conversation_user_system)
 
-    # Create and send a system-generated message
+    # Create and send the system-generated message
     system_message = InboxMessage(
         user_id=system_user.id,
         content="Welcome to your inbox! This is a system-generated message.",
@@ -80,25 +80,29 @@ def start_conversation(data: MessageInput, db: Session = Depends(get_db)):
 def get_inbox(user_id: str, db: Session = Depends(get_db)):
     print(f"Fetching inbox for user: {user_id}")
     
+    # Ensure the user exists by email
+    user = db.query(User).filter(User.email == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found")
+    
     # Find the unique System conversation for the user
     system_conversation = db.query(Conversation).join(ConversationUser).filter(
-        ConversationUser.user_id == user_id, Conversation.name == "System"
+        ConversationUser.user_id == user.id, Conversation.name == "System"
     ).first()
 
+    # If no unique System conversation exists, create one
     if not system_conversation:
         print(f"No System conversation found for user {user_id}. Creating one.")
         
         # Create new System conversation specifically for this user
         conversation = Conversation(name="System")
         db.add(conversation)
-        db.commit()  # Commit conversation creation
+        db.commit()  # Commit the conversation creation
         db.refresh(conversation)  # Refresh to get conversation ID
 
         # Add the user to the System conversation
-        user = db.query(User).filter(User.email == user_id).first()  # Get user by email
-        if user:
-            conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
-            db.add(conversation_user)
+        conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
+        db.add(conversation_user)
         db.commit()
 
         # Ensure the system user exists or create it if not
@@ -121,7 +125,7 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
 
         # Re-fetch the conversation with messages
         system_conversation = db.query(Conversation).join(ConversationUser).filter(
-            ConversationUser.user_id == user_id, Conversation.name == "System"
+            ConversationUser.user_id == user.id, Conversation.name == "System"
         ).first()
 
     if not system_conversation:
