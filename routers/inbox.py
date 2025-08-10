@@ -5,43 +5,61 @@ from models import InboxMessage, Conversation, ConversationUser, User
 from database import get_db
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from typing import List
 
 router = APIRouter()
 
 class MessageInput(BaseModel):
-    user_id: str
-    content: str
-    conversation_id: int  # Added conversation_id to the message data
+    users: List[str]  # List of user IDs (or emails) to include in the conversation
+    content: str      # The content of the message
+    user_id: str      # ID of the user sending the message
+    conversation_id: int  # The ID of the conversation
 
 # Check if conversation exists or create a new one
 @router.post("/inbox/start-conversation")
-def start_conversation(users: list[str], db: Session = Depends(get_db)):
-    if len(users) < 2:
-        raise HTTPException(status_code=400, detail="At least two users are required to start a conversation.")
-    
-    # Check if the conversation already exists between these users
-    existing_conversation = db.query(Conversation).join(ConversationUser).filter(
-        ConversationUser.user_id.in_(users)
-    ).group_by(Conversation.id).having(func.count(Conversation.id) == len(users)).first()
-    
-    if existing_conversation:
-        return {"conversation_id": existing_conversation.id}
+def start_conversation(data: MessageInput, db: Session = Depends(get_db)):
+    # Check if the conversation already exists
+    conversation = db.query(Conversation).filter(Conversation.id == data.conversation_id).first()
 
-    # Create a new conversation
-    conversation = Conversation()
-    db.add(conversation)
+    if not conversation:
+        # Create a new conversation if it doesn't exist
+        conversation = Conversation(name="System")  # You can use a more descriptive name
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+
+        # Add users to the conversation (including the System user)
+        for user_email in data.users:
+            user = db.query(User).filter(User.email == user_email).first()
+            if user:
+                conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
+                db.add(conversation_user)
+            else:
+                raise HTTPException(status_code=404, detail=f"User {user_email} not found")
+        db.commit()
+
+        # Add a system-generated message to the conversation
+        system_message = InboxMessage(
+            user_id="system",  # system user (non-real user)
+            content="Welcome to your inbox! This is a system-generated message.",
+            timestamp=datetime.utcnow(),
+            conversation_id=conversation.id
+        )
+        db.add(system_message)
+        db.commit()
+        db.refresh(system_message)
+
+    # Send the message from the user to the conversation
+    message = InboxMessage(
+        user_id=data.user_id,
+        content=data.content,
+        timestamp=datetime.utcnow(),
+        conversation_id=conversation.id
+    )
+    db.add(message)
     db.commit()
-    db.refresh(conversation)
 
-    # Add users to the conversation
-    for user_email in users:
-        user = db.query(User).filter(User.email == user_email).first()
-        if user:
-            conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
-            db.add(conversation_user)
-    db.commit()
-
-    return {"conversation_id": conversation.id}
+    return {"status": "message_sent", "conversation_id": conversation.id, "message_id": message.id}
 
 # Send message to a conversation
 @router.post("/inbox/send")
