@@ -6,6 +6,7 @@ from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User
 from database import get_db
 from datetime import datetime
 from typing import Optional
+from sqlalchemy import func
 import uuid
 
 router = APIRouter()
@@ -40,6 +41,15 @@ class ForgeIdeaNote(ForgeIdeaNoteBase):
 
     class Config:
         orm_mode = True  # Enable ORM mode to handle SQLAlchemy model
+
+def resolve_identity(request: Request) -> str:
+    ident = request.headers.get("x-user-email")
+    if ident and ident.strip():
+        return ident.strip()
+    legacy = request.headers.get("x-user-id")
+    if legacy and legacy.strip():
+        return f"anon:{legacy.strip()}"
+    raise HTTPException(status_code=401, detail="Missing identity")
 
 # === Get All Ideas ===
 @router.get("/forge/ideas")
@@ -138,42 +148,35 @@ def get_idea(idea_id: int, db: Session = Depends(get_db)):
 
 # === Vote on an Idea ===
 @router.post("/forge/ideas/{idea_id}/vote")
-def vote_idea(idea_id: int, request: Request, response: Response, db: Session = Depends(get_db)):
-    user_email = request.headers.get("x-user-email")
-    user_id = request.headers.get("x-user-id")  # Get user_id from headers (sent manually)
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Anonymous user identification required.")
-
-    # Fetch the idea
-    idea = db.query(ForgeIdea).get(idea_id)
+def toggle_vote(idea_id: int, request: Request, db: Session = Depends(get_db)):
+    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
     if not idea:
-        raise HTTPException(status_code=404, detail="Idea not found.")
+        raise HTTPException(status_code=404, detail="Idea not found")
 
-    # Check if the user has already voted on this idea using user_id
-    existing_vote = db.query(ForgeVote).filter_by(user_id=user_id, idea_id=idea_id).first()
+    identity = resolve_identity(request)  # real email or "anon:{uuid}"
 
-    if existing_vote:
-        # If the user already voted, remove the vote and decrease the vote count
-        db.delete(existing_vote)
+    existing = (
+        db.query(ForgeVote)
+        .filter(ForgeVote.idea_id == idea_id, ForgeVote.user_email == identity)
+        .first()
+    )
+    if existing:
+        db.delete(existing)
         db.commit()
-
-        # Recalculate the votes_count after removing the vote
-        idea.votes_count = len(idea.votes)
-        db.commit()
-
-        return {"message": "Vote removed."}
+        voted = False
     else:
-        # If the user hasn't voted yet, add their vote
-        vote = ForgeVote(user_id=user_id, user_email=user_email, idea_id=idea_id)
-        db.add(vote)
+        db.add(ForgeVote(idea_id=idea_id, user_email=identity))
         db.commit()
+        voted = True
 
-        # Recalculate the votes_count after adding the vote
-        idea.votes_count = len(idea.votes)
+    votes_count = db.query(func.count(ForgeVote.id)).filter(ForgeVote.idea_id == idea_id).scalar()
+    try:
+        idea.votes_count = votes_count
         db.commit()
+    except Exception:
+        db.rollback()
 
-        return {"message": "Vote recorded."}
+    return {"status": "ok", "idea_id": idea_id, "voted": voted, "votes_count": votes_count}
 
 # === Join Idea ===
 @router.post("/forge/ideas/{idea_id}/join")

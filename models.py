@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON, Date
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON, Date, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 import uuid
@@ -620,25 +620,20 @@ class ForgeIdea(Base):
 
 class ForgeVote(Base):
     __tablename__ = "forge_votes"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_email = Column(String, nullable=True)  # Nullable for anonymous users
-    user_id = Column(String, nullable=True)     # Nullable for logged-in users
-    idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"))
-    
-    # Relationship with ForgeIdea model
+
+    id = Column(Integer, primary_key=True)
+    idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_email = Column(String, index=True, nullable=False)  # real email OR "anon:{uuid}"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
     idea = relationship("ForgeIdea", back_populates="votes")
-    
-    # Ensure that either user_email or user_id is present, but not both empty
-    def __init__(self, user_email=None, user_id=None, idea_id=None):
-        if not user_email and not user_id:
-            raise ValueError("Either user_email or user_id must be provided.")
-        self.user_email = user_email
-        self.user_id = user_id
-        self.idea_id = idea_id
+
+    __table_args__ = (
+        UniqueConstraint("idea_id", "user_email", name="uq_vote_one_per_identity"),
+    )
 
     def __repr__(self):
-        return f"<ForgeVote(user_email={self.user_email}, user_id={self.user_id}, idea_id={self.idea_id})>"
+        return f"<ForgeVote(idea_id={self.idea_id}, user_email={self.user_email})>"
 
 class ForgeWorker(Base):
     __tablename__ = "forge_workers"
