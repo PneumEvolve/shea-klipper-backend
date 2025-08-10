@@ -80,11 +80,15 @@ def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db
 # Get all messages in the inbox for a user
 @router.get("/inbox/{user_id}")
 def get_inbox(user_id: str, db=Depends(get_db)):
+    # Fetch all messages where the user is involved, regardless of conversation
     messages = db.query(InboxMessage)\
-        .filter_by(user_id=user_id)\
+        .filter(InboxMessage.user_id == user_id)\
         .order_by(InboxMessage.timestamp.desc())\
         .all()
-        
+
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages found for this user.")
+     
     return [
         {
             "id": m.id,
