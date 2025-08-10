@@ -175,3 +175,44 @@ def send_dm(payload: DMSendIn, db: Session = Depends(get_db)):
     db.refresh(msg)
 
     return {"status": "ok", "conversation_id": convo.id, "message_id": msg.id}
+
+@router.get("/inbox/feed/{user_email}")
+def get_inbox_feed(user_email: str, db: Session = Depends(get_db)):
+    user = get_or_create_user_by_email(db, user_email)
+    system_user = get_or_create_system_user(db)
+
+    # All conversation IDs the user participates in
+    convo_ids = [
+        row[0]
+        for row in db.query(ConversationUser.conversation_id)
+                     .filter(ConversationUser.user_id == user.id)
+                     .all()
+    ]
+    if not convo_ids:
+        return []
+
+    # Grab all messages across those convos (oldest→newest; flip to desc if you prefer)
+    msgs = (
+        db.query(InboxMessage)
+          .filter(InboxMessage.conversation_id.in_(convo_ids))
+          .order_by(InboxMessage.timestamp.asc())
+          .all()
+    )
+
+    # Optional: eager-load authors in one pass (simple version uses relationship)
+    out = []
+    for m in msgs:
+        author_email = m.user.email if getattr(m, "user", None) else None
+        # Include convo name so you can label System vs DM in UI
+        convo_name = m.conversation.name if getattr(m, "conversation", None) else None
+        out.append({
+            "id": m.id,
+            "conversation_id": m.conversation_id,
+            "conversation_name": convo_name,  # "System" or "dm:<a>:<b>" or None
+            "content": m.content,
+            "timestamp": m.timestamp,
+            "read": m.read,
+            "from_system": (m.user_id == system_user.id),
+            "from_email": author_email,
+        })
+    return out
