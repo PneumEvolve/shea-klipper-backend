@@ -124,3 +124,57 @@ def mark_read(message_id: int, db: Session = Depends(get_db)):
     msg.read = True
     db.commit()
     return {"status": "ok", "message": "updated"}
+
+def get_user_by_email(db: Session, email: str) -> User:
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User {email} not found")
+    return user
+
+def get_or_create_dm_conversation(db: Session, a: User, b: User) -> Conversation:
+    # Find conversation that has exactly these two participants
+    convo = (
+        db.query(Conversation)
+        .join(ConversationUser)
+        .filter(ConversationUser.user_id.in_([a.id, b.id]), Conversation.name == None)
+        .group_by(Conversation.id)
+        .having(db.func.count(ConversationUser.id) == 2)
+        .first()
+    )
+    if convo:
+        return convo
+
+    # Create fresh conversation (unnamed for DMs)
+    convo = Conversation(name=None)
+    db.add(convo)
+    db.flush()
+    db.add(ConversationUser(user_id=a.id, conversation_id=convo.id))
+    db.add(ConversationUser(user_id=b.id, conversation_id=convo.id))
+    db.commit()
+    db.refresh(convo)
+    return convo
+
+from pydantic import BaseModel
+class DMSendIn(BaseModel):
+    sender_email: str
+    recipient_email: str
+    content: str
+
+@router.post("/conversations/dm/send")
+def send_dm(payload: DMSendIn, db: Session = Depends(get_db)):
+    sender = get_user_by_email(db, payload.sender_email)
+    recipient = get_user_by_email(db, payload.recipient_email)
+
+    convo = get_or_create_dm_conversation(db, sender, recipient)
+
+    msg = InboxMessage(
+        user_id=sender.id,
+        conversation_id=convo.id,
+        content=payload.content,
+        timestamp=datetime.utcnow(),
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+
+    return {"status": "ok", "conversation_id": convo.id, "message_id": msg.id}
