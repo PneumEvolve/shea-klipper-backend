@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from sqlalchemy.orm import Session
 from typing import Optional, List
+from sqlalchemy import func, distinct
 
 from models import InboxMessage, Conversation, ConversationUser, User
 from database import get_db
@@ -132,24 +133,20 @@ def get_user_by_email(db: Session, email: str) -> User:
     return user
 
 def get_or_create_dm_conversation(db: Session, a: User, b: User) -> Conversation:
-    # Find conversation that has exactly these two participants
-    convo = (
-        db.query(Conversation)
-        .join(ConversationUser)
-        .filter(ConversationUser.user_id.in_([a.id, b.id]), Conversation.name == None)
-        .group_by(Conversation.id)
-        .having(db.func.count(ConversationUser.id) == 2)
-        .first()
-    )
+    # Deterministic key so A↔B always maps to the same convo
+    key = f"dm:{min(a.id, b.id)}:{max(a.id, b.id)}"
+
+    convo = db.query(Conversation).filter(Conversation.name == key).first()
     if convo:
         return convo
 
-    # Create fresh conversation (unnamed for DMs)
-    convo = Conversation(name=None)
+    convo = Conversation(name=key)
     db.add(convo)
-    db.flush()
+    db.flush()  # ensure convo.id is available
+
     db.add(ConversationUser(user_id=a.id, conversation_id=convo.id))
     db.add(ConversationUser(user_id=b.id, conversation_id=convo.id))
+
     db.commit()
     db.refresh(convo)
     return convo
