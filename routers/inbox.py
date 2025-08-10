@@ -77,24 +77,54 @@ def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db
         for m in messages
     ]
 
-# Get all messages in the inbox for a user
+# Ensure there's a "System" conversation for the user, create if not
 @router.get("/inbox/{user_id}")
-def get_inbox(user_id: str, db=Depends(get_db)):
-    # Fetch all messages where the user is involved, regardless of conversation
-    messages = db.query(InboxMessage)\
-        .filter(InboxMessage.user_id == user_id)\
-        .order_by(InboxMessage.timestamp.desc())\
-        .all()
+def get_inbox(user_id: str, db: Session = Depends(get_db)):
+    # Find the System conversation for the user
+    system_conversation = db.query(Conversation).join(ConversationUser).filter(
+        ConversationUser.user_id == user_id, Conversation.name == "System"
+    ).first()
 
-    if not messages:
-        raise HTTPException(status_code=404, detail="No messages found for this user.")
-     
+    # If no System conversation exists, create one and a system message
+    if not system_conversation:
+        # Create new System conversation
+        conversation = Conversation(name="System")
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+
+        # Add the user to the System conversation
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
+            db.add(conversation_user)
+        db.commit()
+
+        # Send a system-generated message to the new System conversation
+        system_message = InboxMessage(
+            user_id="system",  # Send from the system, not a real user
+            content="Welcome to your inbox! This is a system-generated message.",
+            timestamp=datetime.utcnow(),
+            conversation_id=conversation.id
+        )
+        db.add(system_message)
+        db.commit()
+        db.refresh(system_message)
+
+        # Return the system conversation with messages
+        system_conversation = db.query(Conversation).join(ConversationUser).filter(
+            ConversationUser.user_id == user_id, Conversation.name == "System"
+        ).first()
+
+    # Fetch the system conversation messages
+    messages = db.query(InboxMessage).filter(InboxMessage.conversation_id == system_conversation.id).order_by(InboxMessage.timestamp).all()
+
     return [
         {
             "id": m.id,
             "content": m.content,
             "timestamp": m.timestamp,
-            "read": m.read  # ✅ include the read flag
+            "read": m.read
         }
         for m in messages
     ]
