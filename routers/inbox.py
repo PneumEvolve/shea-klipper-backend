@@ -27,56 +27,83 @@ def get_or_create_system_user(db: Session) -> User:
     db.refresh(sys)
     return sys
 
-def get_or_create_user_by_email(db: Session, email: str) -> User:
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail=f"User {email} not found")
-    return user
-
 def get_or_create_system_conversation_for_user(db: Session, user: User, sys_user: User) -> Conversation:
-    # Find a conversation named "System" that includes this user
-    convo = (
+    """
+    Ensure the user has a private System conversation named 'system:{user.id}'.
+    If we find an old-style convo named 'System' that includes the user, we rename it.
+    """
+    key = f"system:{user.id}"
+
+    # Fast path: already migrated
+    convo = db.query(Conversation).filter(Conversation.name == key).first()
+    if convo:
+        return convo
+
+    # Legacy path: the old shared name 'System' with this user as a participant
+    legacy = (
         db.query(Conversation)
         .join(ConversationUser)
         .filter(ConversationUser.user_id == user.id, Conversation.name == "System")
         .first()
     )
+    if legacy:
+        # rename to deterministic key (satisfies unique constraint)
+        legacy.name = key
 
-    if convo:
-        # Optional: backfill a welcome if the convo exists but is empty
-        has_any = db.query(InboxMessage.id).filter(InboxMessage.conversation_id == convo.id).first()
-        if not has_any:
-            welcome = InboxMessage(
-                user_id=sys_user.id,
-                content="Welcome to your inbox! This is a system-generated message.",
-                timestamp=datetime.utcnow(),
-                conversation_id=convo.id,
+        # ensure system user is attached (older rows might have only the user)
+        has_sys = (
+            db.query(ConversationUser)
+            .filter(
+                ConversationUser.conversation_id == legacy.id,
+                ConversationUser.user_id == sys_user.id,
             )
-            db.add(welcome)
-            db.commit()
-        return convo
-    else:
-        # ---- creation path (explicit else prevents "unreachable" greying) ----
-        convo = Conversation(name="System")
-        db.add(convo)
-        db.flush()  # ensure convo.id exists
+            .first()
+        )
+        if not has_sys:
+            db.add(ConversationUser(user_id=sys_user.id, conversation_id=legacy.id))
 
-        # Attach both participants
-        db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
-        db.add(ConversationUser(user_id=sys_user.id, conversation_id=convo.id))
+        # seed welcome if empty
+        has_msg = (
+            db.query(InboxMessage.id)
+            .filter(InboxMessage.conversation_id == legacy.id)
+            .first()
+        )
+        if not has_msg:
+            db.add(
+                InboxMessage(
+                    user_id=sys_user.id,
+                    content="Welcome to your inbox! This is a system-generated message.",
+                    timestamp=datetime.utcnow(),
+                    conversation_id=legacy.id,
+                )
+            )
 
-        # Seed welcome immediately
-        welcome = InboxMessage(
+        db.commit()
+        db.refresh(legacy)
+        return legacy
+
+    # Create fresh conversation with deterministic key
+    convo = Conversation(name=key)
+    db.add(convo)
+    db.flush()  # ensure convo.id
+
+    # Attach both participants
+    db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
+    db.add(ConversationUser(user_id=sys_user.id, conversation_id=convo.id))
+
+    # Seed welcome
+    db.add(
+        InboxMessage(
             user_id=sys_user.id,
             content="Welcome to your inbox! This is a system-generated message.",
             timestamp=datetime.utcnow(),
             conversation_id=convo.id,
         )
-        db.add(welcome)
+    )
 
-        db.commit()
-        db.refresh(convo)
-        return convo
+    db.commit()
+    db.refresh(convo)
+    return convo
 
 # ===== Routes =====
 
