@@ -80,22 +80,21 @@ def start_conversation(data: MessageInput, db: Session = Depends(get_db)):
 def get_inbox(user_id: str, db: Session = Depends(get_db)):
     print(f"Fetching inbox for user: {user_id}")
     
-    # Try to find the unique System conversation for the user
+    # Find the unique System conversation for the user
     system_conversation = db.query(Conversation).join(ConversationUser).filter(
         ConversationUser.user_id == user_id, Conversation.name == "System"
     ).first()
 
-    # If no unique System conversation exists, create one
     if not system_conversation:
         print(f"No System conversation found for user {user_id}. Creating one.")
         
-        # Create a new System conversation specifically for this user
+        # Create new System conversation specifically for this user
         conversation = Conversation(name="System")
         db.add(conversation)
-        db.commit()  # Commit the conversation creation
-        db.refresh(conversation)  # Refresh to get the conversation ID
+        db.commit()  # Commit conversation creation
+        db.refresh(conversation)  # Refresh to get conversation ID
 
-        # Add the user to the new System conversation
+        # Add the user to the System conversation
         user = db.query(User).filter(User.email == user_id).first()  # Get user by email
         if user:
             conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
@@ -125,15 +124,23 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
             ConversationUser.user_id == user_id, Conversation.name == "System"
         ).first()
 
-    # Check if the system_conversation is still None after creation attempt
     if not system_conversation:
         raise HTTPException(status_code=500, detail="Failed to create or fetch system conversation.")
 
+    print(f"System conversation ID: {system_conversation.id}")
+    
     # Fetch the system conversation messages for this user
     messages = db.query(InboxMessage).filter(InboxMessage.conversation_id == system_conversation.id).order_by(InboxMessage.timestamp).all()
 
+    # Log the number of messages found
     print(f"Messages found: {len(messages)}")
-    
+
+    # Debug: log the contents of messages if available
+    if messages:
+        for msg in messages:
+            print(f"Message ID: {msg.id}, Content: {msg.content}, Timestamp: {msg.timestamp}")
+
+    # Return the messages
     return [
         {
             "id": m.id,
