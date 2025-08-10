@@ -1,22 +1,34 @@
-# inbox.py
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from datetime import datetime
 from sqlalchemy.orm import Session
-from typing import Optional, List
-from sqlalchemy import func, distinct
 
 from models import InboxMessage, Conversation, ConversationUser, User
 from database import get_db
 
 router = APIRouter()
 
-# ===== Schemas =====
-class SendMessageIn(BaseModel):
-    sender_email: str  # who is sending
-    content: str       # message content
+# ========= Schemas =========
 
-# ===== Helpers =====
+class SendMessageIn(BaseModel):
+    sender_email: str
+    content: str
+
+class DMSendIn(BaseModel):
+    sender_email: str
+    recipient_email: str
+    content: str
+
+
+# ========= Helpers =========
+
+def get_user_by_email(db: Session, email: str) -> User:
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User {email} not found")
+    return user
+
 def get_or_create_system_user(db: Session) -> User:
     sys = db.query(User).filter(User.email == "system@domain.com").first()
     if sys:
@@ -30,16 +42,17 @@ def get_or_create_system_user(db: Session) -> User:
 def get_or_create_system_conversation_for_user(db: Session, user: User, sys_user: User) -> Conversation:
     """
     Ensure the user has a private System conversation named 'system:{user.id}'.
-    If we find an old-style convo named 'System' that includes the user, we rename it.
+    If we find an old-style convo named 'System' that includes the user, we rename it,
+    attach the system user if missing, and seed a welcome if empty.
     """
     key = f"system:{user.id}"
 
-    # Fast path: already migrated
+    # Fast path: already migrated to deterministic key
     convo = db.query(Conversation).filter(Conversation.name == key).first()
     if convo:
         return convo
 
-    # Legacy path: the old shared name 'System' with this user as a participant
+    # Legacy path: an old conversation literally named "System" that includes this user
     legacy = (
         db.query(Conversation)
         .join(ConversationUser)
@@ -47,10 +60,9 @@ def get_or_create_system_conversation_for_user(db: Session, user: User, sys_user
         .first()
     )
     if legacy:
-        # rename to deterministic key (satisfies unique constraint)
         legacy.name = key
 
-        # ensure system user is attached (older rows might have only the user)
+        # Ensure system user is attached
         has_sys = (
             db.query(ConversationUser)
             .filter(
@@ -62,7 +74,7 @@ def get_or_create_system_conversation_for_user(db: Session, user: User, sys_user
         if not has_sys:
             db.add(ConversationUser(user_id=sys_user.id, conversation_id=legacy.id))
 
-        # seed welcome if empty
+        # Seed welcome if empty
         has_msg = (
             db.query(InboxMessage.id)
             .filter(InboxMessage.conversation_id == legacy.id)
@@ -85,7 +97,7 @@ def get_or_create_system_conversation_for_user(db: Session, user: User, sys_user
     # Create fresh conversation with deterministic key
     convo = Conversation(name=key)
     db.add(convo)
-    db.flush()  # ensure convo.id
+    db.flush()  # ensure convo.id is available
 
     # Attach both participants
     db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
@@ -105,29 +117,40 @@ def get_or_create_system_conversation_for_user(db: Session, user: User, sys_user
     db.refresh(convo)
     return convo
 
-# ===== Routes =====
+def get_or_create_dm_conversation(db: Session, a: User, b: User) -> Conversation:
+    """
+    Deterministic key so A↔B always maps to the same DM conversation,
+    and we never collide with System or other named convos.
+    """
+    key = f"dm:{min(a.id, b.id)}:{max(a.id, b.id)}"
+    convo = db.query(Conversation).filter(Conversation.name == key).first()
+    if convo:
+        return convo
+
+    convo = Conversation(name=key)
+    db.add(convo)
+    db.flush()
+
+    db.add(ConversationUser(user_id=a.id, conversation_id=convo.id))
+    db.add(ConversationUser(user_id=b.id, conversation_id=convo.id))
+
+    db.commit()
+    db.refresh(convo)
+    return convo
+
+
+# ========= Routes =========
 
 @router.post("/inbox/send")
 def send_to_system(data: SendMessageIn, db: Session = Depends(get_db)):
-    # Resolve identities
-    sender = get_or_create_user_by_email(db, data.sender_email)
+    """
+    Send a message into the caller's System conversation (auto-creates on first use).
+    """
+    sender = get_user_by_email(db, data.sender_email)
     system_user = get_or_create_system_user(db)
 
-    # Ensure the per-user system conversation
     convo = get_or_create_system_conversation_for_user(db, sender, system_user)
 
-    # If we're bootstrapping, optionally send a welcome only if convo is empty
-    has_any = db.query(InboxMessage).filter(InboxMessage.conversation_id == convo.id).first()
-    if not has_any:
-        welcome = InboxMessage(
-            user_id=system_user.id,
-            content="Welcome to your inbox! This is a system-generated message.",
-            timestamp=datetime.utcnow(),
-            conversation_id=convo.id,
-        )
-        db.add(welcome)
-
-    # Append the sender's message
     msg = InboxMessage(
         user_id=sender.id,
         content=data.content,
@@ -142,24 +165,28 @@ def send_to_system(data: SendMessageIn, db: Session = Depends(get_db)):
 
 @router.get("/inbox/{user_email}")
 def get_inbox(user_email: str, db: Session = Depends(get_db)):
-    user = get_or_create_user_by_email(db, user_email)
+    """
+    Return ONLY the System conversation for the given user.
+    """
+    user = get_user_by_email(db, user_email)
     system_user = get_or_create_system_user(db)
     convo = get_or_create_system_conversation_for_user(db, user, system_user)
 
-    # Backfill welcome if this System convo is empty (covers older users)
+    # Safety: backfill welcome if somehow empty
     has_any = (
         db.query(InboxMessage.id)
-          .filter(InboxMessage.conversation_id == convo.id)
-          .first()
+        .filter(InboxMessage.conversation_id == convo.id)
+        .first()
     )
     if not has_any:
-        welcome = InboxMessage(
-            user_id=system_user.id,
-            content="Welcome to your inbox! This is a system-generated message.",
-            timestamp=datetime.utcnow(),
-            conversation_id=convo.id,
+        db.add(
+            InboxMessage(
+                user_id=system_user.id,
+                content="Welcome to your inbox! This is a system-generated message.",
+                timestamp=datetime.utcnow(),
+                conversation_id=convo.id,
+            )
         )
-        db.add(welcome)
         db.commit()
 
     messages = (
@@ -180,6 +207,66 @@ def get_inbox(user_email: str, db: Session = Depends(get_db)):
         for m in messages
     ]
 
+@router.get("/inbox/feed/{user_email}")
+def get_inbox_feed(user_email: str, db: Session = Depends(get_db)):
+    """
+    Return a unified feed: System + all DMs for the user.
+    Bootstraps the System convo (and welcome) if missing.
+    """
+    user = get_user_by_email(db, user_email)
+    system_user = get_or_create_system_user(db)
+
+    # Ensure System convo exists (and seeded)
+    convo = get_or_create_system_conversation_for_user(db, user, system_user)
+
+    # Safety: backfill welcome if somehow empty
+    has_any = (
+        db.query(InboxMessage.id)
+        .filter(InboxMessage.conversation_id == convo.id)
+        .first()
+    )
+    if not has_any:
+        db.add(
+            InboxMessage(
+                user_id=system_user.id,
+                content="Welcome to your inbox! This is a system-generated message.",
+                timestamp=datetime.utcnow(),
+                conversation_id=convo.id,
+            )
+        )
+        db.commit()
+
+    # Collect all conversation IDs the user participates in
+    convo_ids = [
+        row[0]
+        for row in db.query(ConversationUser.conversation_id)
+                     .filter(ConversationUser.user_id == user.id)
+                     .all()
+    ]
+    if not convo_ids:
+        return []
+
+    msgs = (
+        db.query(InboxMessage)
+        .filter(InboxMessage.conversation_id.in_(convo_ids))
+        .order_by(InboxMessage.timestamp.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": m.id,
+            "conversation_id": m.conversation_id,
+            "conversation_name": m.conversation.name if getattr(m, "conversation", None) else None,
+            "content": m.content,
+            "timestamp": m.timestamp,
+            "read": m.read,
+            "from_system": (m.user_id == system_user.id),
+            "from_email": m.user.email if getattr(m, "user", None) else None,
+        }
+        for m in msgs
+    ]
+
 @router.post("/inbox/read/{message_id}")
 def mark_read(message_id: int, db: Session = Depends(get_db)):
     msg = db.query(InboxMessage).filter(InboxMessage.id == message_id).first()
@@ -191,39 +278,11 @@ def mark_read(message_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "ok", "message": "updated"}
 
-def get_user_by_email(db: Session, email: str) -> User:
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail=f"User {email} not found")
-    return user
-
-def get_or_create_dm_conversation(db: Session, a: User, b: User) -> Conversation:
-    # Deterministic key so A↔B always maps to the same convo
-    key = f"dm:{min(a.id, b.id)}:{max(a.id, b.id)}"
-
-    convo = db.query(Conversation).filter(Conversation.name == key).first()
-    if convo:
-        return convo
-
-    convo = Conversation(name=key)
-    db.add(convo)
-    db.flush()  # ensure convo.id is available
-
-    db.add(ConversationUser(user_id=a.id, conversation_id=convo.id))
-    db.add(ConversationUser(user_id=b.id, conversation_id=convo.id))
-
-    db.commit()
-    db.refresh(convo)
-    return convo
-
-from pydantic import BaseModel
-class DMSendIn(BaseModel):
-    sender_email: str
-    recipient_email: str
-    content: str
-
 @router.post("/conversations/dm/send")
 def send_dm(payload: DMSendIn, db: Session = Depends(get_db)):
+    """
+    Send a direct message between two users. Creates or reuses the DM conversation.
+    """
     sender = get_user_by_email(db, payload.sender_email)
     recipient = get_user_by_email(db, payload.recipient_email)
 
@@ -240,58 +299,3 @@ def send_dm(payload: DMSendIn, db: Session = Depends(get_db)):
     db.refresh(msg)
 
     return {"status": "ok", "conversation_id": convo.id, "message_id": msg.id}
-
-@router.get("/inbox/feed/{user_email}")
-def get_inbox_feed(user_email: str, db: Session = Depends(get_db)):
-    user = get_or_create_user_by_email(db, user_email)
-    system_user = get_or_create_system_user(db)
-
-    # ✅ Ensure the per-user System convo exists (and seed welcome if your helper does)
-    convo = get_or_create_system_conversation_for_user(db, user, system_user)
-
-    # (Safety) Backfill welcome if convo ended up empty for any reason
-    has_any = (
-        db.query(InboxMessage.id)
-          .filter(InboxMessage.conversation_id == convo.id)
-          .first()
-    )
-    if not has_any:
-        welcome = InboxMessage(
-            user_id=system_user.id,
-            content="Welcome to your inbox! This is a system-generated message.",
-            timestamp=datetime.utcnow(),
-            conversation_id=convo.id,
-        )
-        db.add(welcome)
-        db.commit()
-
-    # Now collect all conversations the user is in (System + DMs)
-    convo_ids = [
-        row[0]
-        for row in db.query(ConversationUser.conversation_id)
-                     .filter(ConversationUser.user_id == user.id)
-                     .all()
-    ]
-    if not convo_ids:
-        return []
-
-    msgs = (
-        db.query(InboxMessage)
-          .filter(InboxMessage.conversation_id.in_(convo_ids))
-          .order_by(InboxMessage.timestamp.asc())
-          .all()
-    )
-
-    return [
-        {
-            "id": m.id,
-            "conversation_id": m.conversation_id,
-            "conversation_name": m.conversation.name if getattr(m, "conversation", None) else None,
-            "content": m.content,
-            "timestamp": m.timestamp,
-            "read": m.read,
-            "from_system": (m.user_id == system_user.id),
-            "from_email": m.user.email if getattr(m, "user", None) else None,
-        }
-        for m in msgs
-    ]
