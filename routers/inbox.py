@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from datetime import datetime
 from models import InboxMessage, Conversation, ConversationUser, User
 from database import get_db
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -15,65 +14,65 @@ class MessageInput(BaseModel):
     user_id: str      # ID of the user sending the message
     conversation_id: int  # The ID of the conversation
 
-# Check if conversation exists or create a new one
-@router.post("/inbox/start-conversation")
-def start_conversation(data: MessageInput, db: Session = Depends(get_db)):
-    # Ensure the user exists first by email
-    user = db.query(User).filter(User.email == data.user_id).first()  # Check the real user by email
-    if not user:
-        raise HTTPException(status_code=404, detail=f"User {data.user_id} not found")
-
-    # Check if the System user exists by email
-    system_user = db.query(User).filter(User.email == "system@domain.com").first()  # Check if System user exists
+# Utility function to create System user if it doesn't exist
+def create_system_user_if_not_exists(db: Session):
+    system_user = db.query(User).filter(User.email == "system@domain.com").first()
     if not system_user:
-        # Create the System user if it doesn't exist
         system_user = User(email="system@domain.com", name="System")
         db.add(system_user)
         db.commit()
         db.refresh(system_user)
+    return system_user
 
-    # Now create the conversation and add users (including system user)
+# Optimize conversation creation, user addition, and messaging
+@router.post("/inbox/start-conversation")
+def start_conversation(data: MessageInput, db: Session = Depends(get_db)):
+    # Ensure the real user exists by email
+    user = db.query(User).filter(User.email == data.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User {data.user_id} not found")
+
+    # Ensure the System user exists or create it
+    system_user = create_system_user_if_not_exists(db)
+
+    # Check if the conversation exists
     conversation = db.query(Conversation).filter(Conversation.id == data.conversation_id).first()
 
+    # If the conversation doesn't exist, create it
     if not conversation:
-        # Create a new conversation if it doesn't exist
-        conversation = Conversation(name="System")  # You can customize the name of the conversation
+        conversation = Conversation(name="System")
         db.add(conversation)
-        db.commit()
-        db.refresh(conversation)
 
-    # Add the real user and System user to the conversation
+    # Add both the user and system user to the conversation
     conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
-    db.add(conversation_user)
-
-    # Add the System user to the conversation
     conversation_user_system = ConversationUser(user_id=system_user.id, conversation_id=conversation.id)
+    
+    db.add(conversation_user)
     db.add(conversation_user_system)
 
-    db.commit()
-
-    # Create and send the system message
+    # Create and send a system-generated message
     system_message = InboxMessage(
-        user_id=system_user.id,  # System user (non-real user)
+        user_id=system_user.id,
         content="Welcome to your inbox! This is a system-generated message.",
         timestamp=datetime.utcnow(),
         conversation_id=conversation.id
     )
-    db.add(system_message)
-    db.commit()
-    db.refresh(system_message)
 
-    # Send the user's message
-    message = InboxMessage(
-        user_id=user.id,  # Use the user ID here, not the email
+    # Create the user's message
+    user_message = InboxMessage(
+        user_id=user.id,
         content=data.content,
         timestamp=datetime.utcnow(),
         conversation_id=conversation.id
     )
-    db.add(message)
+
+    db.add(system_message)
+    db.add(user_message)
+
+    # Commit all the changes at once
     db.commit()
 
-    return {"status": "message_sent", "conversation_id": conversation.id, "message_id": message.id}
+    return {"status": "message_sent", "conversation_id": conversation.id, "message_id": user_message.id}
 
 # Send message to a conversation
 @router.post("/inbox/send")
@@ -86,7 +85,7 @@ def send_message(data: MessageInput, db: Session = Depends(get_db)):
     msg = InboxMessage(user_id=data.user_id, content=data.content, timestamp=datetime.utcnow(), conversation_id=conversation.id)
     db.add(msg)
     db.commit()
-    
+
     return {"status": "sent"}
 
 # Get all messages from a conversation
@@ -97,7 +96,7 @@ def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db
         raise HTTPException(status_code=404, detail="Conversation not found.")
     
     messages = db.query(InboxMessage).filter(InboxMessage.conversation_id == conversation_id).order_by(InboxMessage.timestamp).all()
-    
+
     return [
         {
             "id": m.id,
@@ -109,18 +108,17 @@ def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db
         for m in messages
     ]
 
-# Ensure there's a "System" conversation for the user, create if not
+# Ensure there's a unique "System" conversation for the user, create if not
 @router.get("/inbox/{user_id}")
 def get_inbox(user_id: str, db: Session = Depends(get_db)):
-    # Log the request to fetch the inbox
     print(f"Fetching inbox for user: {user_id}")
     
-    # Find the unique System conversation for the user
+    # Check if the user already has a unique "System" conversation
     system_conversation = db.query(Conversation).join(ConversationUser).filter(
         ConversationUser.user_id == user_id, Conversation.name == "System"
     ).first()
 
-    # If no unique System conversation exists, create one and a system message
+    # If no unique System conversation exists, create one
     if not system_conversation:
         print(f"No System conversation found for user {user_id}. Creating one.")
         
@@ -131,13 +129,13 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         db.refresh(conversation)
 
         # Add the user to the System conversation
-        user = db.query(User).filter(User.email == user_id).first()  # Get the user by email
+        user = db.query(User).filter(User.email == user_id).first()  # Get user by email
         if user:
             conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
             db.add(conversation_user)
         db.commit()
 
-        # Create and send a system-generated message to the new System conversation
+        # Send system-generated message to the new System conversation
         system_message = InboxMessage(
             user_id="system",  # system user (non-real user)
             content="Welcome to your inbox! This is a system-generated message.",
@@ -148,18 +146,16 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(system_message)
 
-        # Fetch the conversation with messages
+        # Re-fetch the conversation with messages
         system_conversation = db.query(Conversation).join(ConversationUser).filter(
             ConversationUser.user_id == user_id, Conversation.name == "System"
         ).first()
 
-    # Fetch the system conversation messages for this user
+    # Fetch the system conversation messages
     messages = db.query(InboxMessage).filter(InboxMessage.conversation_id == system_conversation.id).order_by(InboxMessage.timestamp).all()
 
-    # Log the number of messages found
     print(f"Messages found: {len(messages)}")
-
-    # Return the messages
+    
     return [
         {
             "id": m.id,
@@ -169,6 +165,7 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         }
         for m in messages
     ]
+
 # Mark a message as read
 @router.post("/inbox/read/{message_id}")
 def mark_message_read(message_id: int, db: Session = Depends(get_db)):
@@ -194,7 +191,7 @@ def submit_contribution(data: dict, db=Depends(get_db)):
 """.strip()
 
     msg = InboxMessage(
-        user_id="1",  # 📥 send to your inbox
+        user_id="1",  # Send to your inbox
         content=content,
         timestamp=datetime.utcnow()
     )
