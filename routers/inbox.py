@@ -444,3 +444,57 @@ def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db
             "from_display": from_display,
         })
     return out
+
+# ---- Request schema ----
+class ConversationSendIn(BaseModel):
+    sender_email: str
+    content: str
+
+@router.post("/conversations/{conversation_id}/send")
+def send_to_conversation(conversation_id: int, data: ConversationSendIn, db: Session = Depends(get_db)):
+    sender = get_user_by_email(db, data.sender_email)
+
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Ensure sender participates in this conversation
+    is_member = (
+        db.query(ConversationUser)
+        .filter(
+            ConversationUser.conversation_id == conversation_id,
+            ConversationUser.user_id == sender.id,
+        )
+        .first()
+    )
+    if not is_member:
+        raise HTTPException(status_code=403, detail="Not a participant in this conversation")
+
+    # Create message
+    msg = InboxMessage(
+        user_id=sender.id,
+        conversation_id=conversation_id,
+        content=data.content,
+        timestamp=datetime.utcnow(),
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+
+    # Build a UI-friendly payload (matches /conversations/{id}/messages shape)
+    from_email = sender.email
+    from_username = sender.username
+    from_display = from_username or from_email or "User"
+
+    return {
+        "status": "ok",
+        "message": {
+            "id": msg.id,
+            "content": msg.content,
+            "timestamp": msg.timestamp,
+            "read": msg.read,
+            "from_email": from_email,
+            "from_username": from_username,
+            "from_display": from_display,
+        },
+    }
