@@ -624,3 +624,43 @@ def join_idea_conversation(idea_id: int, user_email: str, db: Session = Depends(
     db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
     db.commit()
     return {"status": "ok", "message": "joined", "conversation_id": convo.id}
+
+@router.get("/ideas/{idea_id}/conversation/following")
+def is_following_idea_conversation(idea_id: int, user_email: str, db: Session = Depends(get_db)):
+    """
+    Return whether the user is a participant of the idea conversation.
+    """
+    user = get_user_by_email(db, user_email)
+    convo = get_or_create_idea_conversation(db, idea_id)
+    exists = (
+        db.query(ConversationUser.id)
+        .filter(
+            ConversationUser.conversation_id == convo.id,
+            ConversationUser.user_id == user.id,
+        )
+        .first()
+    )
+    return {"conversation_id": convo.id, "following": bool(exists)}
+
+
+@router.post("/ideas/{idea_id}/conversation/unfollow")
+def unfollow_idea_conversation(idea_id: int, user_email: str, db: Session = Depends(get_db)):
+    """
+    Remove the user from the idea conversation participants (their feed won't show it).
+    """
+    user = get_user_by_email(db, user_email)
+    convo = get_or_create_idea_conversation(db, idea_id)
+    link = (
+        db.query(ConversationUser)
+        .filter(
+            ConversationUser.conversation_id == convo.id,
+            ConversationUser.user_id == user.id,
+        )
+        .first()
+    )
+    if not link:
+        return {"status": "ok", "message": "not_following", "conversation_id": convo.id}
+
+    db.delete(link)
+    db.commit()
+    return {"status": "ok", "message": "unfollowed", "conversation_id": convo.id}
