@@ -115,7 +115,7 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
     # Log the request to fetch the inbox
     print(f"Fetching inbox for user: {user_id}")
     
-    # Find the System conversation for the user
+    # Check if the System conversation exists for the user
     system_conversation = db.query(Conversation).join(ConversationUser).filter(
         ConversationUser.user_id == user_id, Conversation.name == "System"
     ).first()
@@ -131,15 +131,15 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         db.refresh(conversation)
 
         # Add the user to the System conversation
-        user = db.query(User).filter(User.id == user_id).first()
+        user = db.query(User).filter(User.email == user_id).first()  # Get the user by email
         if user:
             conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
             db.add(conversation_user)
         db.commit()
 
-        # Send a system-generated message to the new System conversation
+        # Create and send a system-generated message to the new System conversation
         system_message = InboxMessage(
-            user_id="system",  # Send from the system, not a real user
+            user_id="system",  # system user (non-real user)
             content="Welcome to your inbox! This is a system-generated message.",
             timestamp=datetime.utcnow(),
             conversation_id=conversation.id
@@ -148,7 +148,7 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(system_message)
 
-        # Return the system conversation with messages
+        # Fetch the conversation with messages
         system_conversation = db.query(Conversation).join(ConversationUser).filter(
             ConversationUser.user_id == user_id, Conversation.name == "System"
         ).first()
@@ -169,7 +169,6 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         }
         for m in messages
     ]
-
 # Mark a message as read
 @router.post("/inbox/read/{message_id}")
 def mark_message_read(message_id: int, db: Session = Depends(get_db)):
