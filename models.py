@@ -546,6 +546,7 @@ class Conversation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    name = Column(String, index=True)
     
     users = relationship("User", secondary="conversation_users", back_populates="conversations", overlaps="conversation_users")
     messages = relationship("InboxMessage", back_populates="conversation")

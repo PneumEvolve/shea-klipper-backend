@@ -80,6 +80,9 @@ def get_conversation_messages(conversation_id: int, db: Session = Depends(get_db
 # Ensure there's a "System" conversation for the user, create if not
 @router.get("/inbox/{user_id}")
 def get_inbox(user_id: str, db: Session = Depends(get_db)):
+    # Log the request to fetch the inbox
+    print(f"Fetching inbox for user: {user_id}")
+    
     # Find the System conversation for the user
     system_conversation = db.query(Conversation).join(ConversationUser).filter(
         ConversationUser.user_id == user_id, Conversation.name == "System"
@@ -87,6 +90,8 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
 
     # If no System conversation exists, create one and a system message
     if not system_conversation:
+        print(f"No System conversation found for user {user_id}. Creating one.")
+        
         # Create new System conversation
         conversation = Conversation(name="System")
         db.add(conversation)
@@ -119,6 +124,10 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
     # Fetch the system conversation messages
     messages = db.query(InboxMessage).filter(InboxMessage.conversation_id == system_conversation.id).order_by(InboxMessage.timestamp).all()
 
+    # Log the number of messages found
+    print(f"Messages found: {len(messages)}")
+
+    # Return the messages
     return [
         {
             "id": m.id,
