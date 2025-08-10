@@ -3,6 +3,8 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from typing import Optional
+from sqlalchemy import func, distinct
 
 from models import InboxMessage, Conversation, ConversationUser, User
 from database import get_db
@@ -299,3 +301,85 @@ def send_dm(payload: DMSendIn, db: Session = Depends(get_db)):
     db.refresh(msg)
 
     return {"status": "ok", "conversation_id": convo.id, "message_id": msg.id}
+
+@router.get("/conversations/summaries/{user_email}")
+def conversation_summaries(user_email: str, db: Session = Depends(get_db)):
+    user = get_user_by_email(db, user_email)
+
+    # all convo ids for this user
+    convo_ids = [cid for (cid,) in db.query(ConversationUser.conversation_id)
+                                 .filter(ConversationUser.user_id == user.id).all()]
+    if not convo_ids:
+        return []
+
+    # last message per convo
+    sub_last = (db.query(InboxMessage.conversation_id,
+                         func.max(InboxMessage.timestamp).label("last_ts"))
+                  .filter(InboxMessage.conversation_id.in_(convo_ids))
+                  .group_by(InboxMessage.conversation_id)
+                  .subquery())
+
+    last_msgs = (db.query(InboxMessage)
+                   .join(sub_last, (InboxMessage.conversation_id == sub_last.c.conversation_id) &
+                                   (InboxMessage.timestamp == sub_last.c.last_ts))
+                   .all())
+
+    # unread per convo (NOTE: your schema has a global msg.read; if you want per-user read later,
+    # add a ConversationRead table. For now we count global unread.)
+    unread_map = {cid: cnt for cid, cnt in
+                  db.query(InboxMessage.conversation_id, func.count(InboxMessage.id))
+                    .filter(InboxMessage.conversation_id.in_(convo_ids),
+                            InboxMessage.read == False)  # noqa: E712
+                    .group_by(InboxMessage.conversation_id)
+                    .all()}
+
+    # build summary
+    out = []
+    for m in last_msgs:
+        convo = m.conversation
+        # derive "other" participant for DMs
+        other_email = None
+        if convo and convo.name and convo.name.startswith("dm:"):
+            # pull both participants and pick the non-self
+            participants = [cu.user for cu in convo.conversation_users]
+            for u in participants:
+                if u.email != user_email:
+                    other_email = u.email
+                    break
+        out.append({
+            "conversation_id": m.conversation_id,
+            "conversation_name": convo.name if convo else None,  # "system:{id}" or "dm:a:b"
+            "last_content": m.content,
+            "last_timestamp": m.timestamp,
+            "unread_count": unread_map.get(m.conversation_id, 0),
+            "other_email": other_email,  # helps UI label DM
+        })
+    # newest first
+    out.sort(key=lambda x: x["last_timestamp"] or datetime.min, reverse=True)
+    return out
+
+@router.get("/conversations/dm/thread")
+def get_dm_thread(
+    me: str, them: str, limit: int = 50, before: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+):
+    a = get_user_by_email(db, me)
+    b = get_user_by_email(db, them)
+    convo = get_or_create_dm_conversation(db, a, b)
+
+    q = db.query(InboxMessage).filter(InboxMessage.conversation_id == convo.id)
+    if before:
+        q = q.filter(InboxMessage.timestamp < before)
+    msgs = q.order_by(InboxMessage.timestamp.desc()).limit(limit).all()
+    msgs.reverse()
+
+    return {
+        "conversation_id": convo.id,
+        "messages": [{
+            "id": m.id,
+            "content": m.content,
+            "timestamp": m.timestamp,
+            "read": m.read,
+            "from_email": m.user.email if m.user else None,
+        } for m in msgs]
+    }
