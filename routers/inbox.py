@@ -27,7 +27,7 @@ def start_conversation(data: MessageInput, db: Session = Depends(get_db)):
     system_user = db.query(User).filter(User.email == "system@domain.com").first()  # System user email
     if not system_user:
         # Create the System user if it doesn't exist
-        system_user = User(email="system@domain.com", name="System")
+        system_user = User(email="system@domain.com", username="System")
         db.add(system_user)
         db.commit()
         db.refresh(system_user)
