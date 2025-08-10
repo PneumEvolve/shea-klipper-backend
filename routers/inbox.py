@@ -100,10 +100,14 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         db.commit()  # Commit the conversation creation
         db.refresh(conversation)  # Refresh to get conversation ID
 
+        print(f"Created new conversation with ID: {conversation.id}")
+
         # Add the user to the System conversation
         conversation_user = ConversationUser(user_id=user.id, conversation_id=conversation.id)
         db.add(conversation_user)
         db.commit()
+
+        print(f"Added user {user.id} to conversation {conversation.id}")
 
         # Ensure the system user exists or create it if not
         system_user = db.query(User).filter(User.email == "system@domain.com").first()
@@ -112,6 +116,8 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
             db.add(system_user)
             db.commit()
             db.refresh(system_user)
+
+        print(f"System user ID: {system_user.id}")
 
         # Send system-generated message to the new System conversation
         system_message = InboxMessage(
@@ -122,6 +128,9 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         )
         db.add(system_message)
         db.commit()  # Commit system message
+        db.refresh(system_message)
+
+        print(f"Sent system message with ID: {system_message.id}")
 
         # Re-fetch the conversation with messages
         system_conversation = db.query(Conversation).join(ConversationUser).filter(
