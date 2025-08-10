@@ -93,7 +93,7 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         conversation = Conversation(name="System")
         db.add(conversation)
         db.commit()  # Commit the conversation creation
-        db.refresh(conversation)
+        db.refresh(conversation)  # Refresh to get the conversation ID
 
         # Add the user to the new System conversation
         user = db.query(User).filter(User.email == user_id).first()  # Get user by email
@@ -124,6 +124,10 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
         system_conversation = db.query(Conversation).join(ConversationUser).filter(
             ConversationUser.user_id == user_id, Conversation.name == "System"
         ).first()
+
+    # Check if the system_conversation is still None after creation attempt
+    if not system_conversation:
+        raise HTTPException(status_code=500, detail="Failed to create or fetch system conversation.")
 
     # Fetch the system conversation messages for this user
     messages = db.query(InboxMessage).filter(InboxMessage.conversation_id == system_conversation.id).order_by(InboxMessage.timestamp).all()
