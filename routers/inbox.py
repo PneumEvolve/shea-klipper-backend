@@ -102,9 +102,17 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
             db.add(conversation_user)
         db.commit()
 
-        # Send a system-generated message to the new System conversation
+        # Ensure the system user exists or create it if not
+        system_user = db.query(User).filter(User.email == "system@domain.com").first()
+        if not system_user:
+            system_user = User(email="system@domain.com", name="System")
+            db.add(system_user)
+            db.commit()
+            db.refresh(system_user)
+
+        # Send system-generated message to the new System conversation
         system_message = InboxMessage(
-            user_id="system",  # system user (non-real user)
+            user_id=system_user.id,  # Use the system user ID (integer) here
             content="Welcome to your inbox! This is a system-generated message.",
             timestamp=datetime.utcnow(),
             conversation_id=conversation.id
