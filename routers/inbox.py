@@ -41,19 +41,42 @@ def get_or_create_system_conversation_for_user(db: Session, user: User, sys_user
         .filter(ConversationUser.user_id == user.id, Conversation.name == "System")
         .first()
     )
-    if convo:
-        return convo
 
-    # Create new conversation
-    convo = Conversation(name="System")
-    db.add(convo)
-    db.flush()        # <-- ensure convo.id exists
-    # Attach both participants
-    db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
-    db.add(ConversationUser(user_id=sys_user.id, conversation_id=convo.id))
-    db.commit()
-    db.refresh(convo)
-    return convo
+    if convo:
+        # Optional: backfill a welcome if the convo exists but is empty
+        has_any = db.query(InboxMessage.id).filter(InboxMessage.conversation_id == convo.id).first()
+        if not has_any:
+            welcome = InboxMessage(
+                user_id=sys_user.id,
+                content="Welcome to your inbox! This is a system-generated message.",
+                timestamp=datetime.utcnow(),
+                conversation_id=convo.id,
+            )
+            db.add(welcome)
+            db.commit()
+        return convo
+    else:
+        # ---- creation path (explicit else prevents "unreachable" greying) ----
+        convo = Conversation(name="System")
+        db.add(convo)
+        db.flush()  # ensure convo.id exists
+
+        # Attach both participants
+        db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
+        db.add(ConversationUser(user_id=sys_user.id, conversation_id=convo.id))
+
+        # Seed welcome immediately
+        welcome = InboxMessage(
+            user_id=sys_user.id,
+            content="Welcome to your inbox! This is a system-generated message.",
+            timestamp=datetime.utcnow(),
+            conversation_id=convo.id,
+        )
+        db.add(welcome)
+
+        db.commit()
+        db.refresh(convo)
+        return convo
 
 # ===== Routes =====
 
@@ -96,6 +119,22 @@ def get_inbox(user_email: str, db: Session = Depends(get_db)):
     system_user = get_or_create_system_user(db)
     convo = get_or_create_system_conversation_for_user(db, user, system_user)
 
+    # Backfill welcome if this System convo is empty (covers older users)
+    has_any = (
+        db.query(InboxMessage.id)
+          .filter(InboxMessage.conversation_id == convo.id)
+          .first()
+    )
+    if not has_any:
+        welcome = InboxMessage(
+            user_id=system_user.id,
+            content="Welcome to your inbox! This is a system-generated message.",
+            timestamp=datetime.utcnow(),
+            conversation_id=convo.id,
+        )
+        db.add(welcome)
+        db.commit()
+
     messages = (
         db.query(InboxMessage)
         .filter(InboxMessage.conversation_id == convo.id)
@@ -109,7 +148,6 @@ def get_inbox(user_email: str, db: Session = Depends(get_db)):
             "content": m.content,
             "timestamp": m.timestamp,
             "read": m.read,
-            # include who said it if you want
             "from_system": (m.user_id == system_user.id),
         }
         for m in messages
