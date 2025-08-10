@@ -115,16 +115,16 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
     # Log the request to fetch the inbox
     print(f"Fetching inbox for user: {user_id}")
     
-    # Check if the System conversation exists for the user
+    # Find the unique System conversation for the user
     system_conversation = db.query(Conversation).join(ConversationUser).filter(
         ConversationUser.user_id == user_id, Conversation.name == "System"
     ).first()
 
-    # If no System conversation exists, create one and a system message
+    # If no unique System conversation exists, create one and a system message
     if not system_conversation:
         print(f"No System conversation found for user {user_id}. Creating one.")
         
-        # Create new System conversation
+        # Create new System conversation specifically for this user
         conversation = Conversation(name="System")
         db.add(conversation)
         db.commit()
@@ -153,7 +153,7 @@ def get_inbox(user_id: str, db: Session = Depends(get_db)):
             ConversationUser.user_id == user_id, Conversation.name == "System"
         ).first()
 
-    # Fetch the system conversation messages
+    # Fetch the system conversation messages for this user
     messages = db.query(InboxMessage).filter(InboxMessage.conversation_id == system_conversation.id).order_by(InboxMessage.timestamp).all()
 
     # Log the number of messages found
