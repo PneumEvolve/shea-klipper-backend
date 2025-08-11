@@ -1,6 +1,6 @@
 # forge.py (FastAPI Router for Forge)
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
-from sqlalchemy.orm import Session, joinedload, aliased
+from sqlalchemy.orm import Session, joinedload, aliased, selectinload
 from pydantic import BaseModel
 from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User, Conversation, ConversationUser
 from database import get_db
