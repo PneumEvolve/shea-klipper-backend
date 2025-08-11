@@ -383,7 +383,7 @@ def get_problem(
 def delete_problem(
     problem_id: int,
     db: Session = Depends(get_db),
-    x_user_email: Optional[str] = None
+    x_user_email: Optional[str] = Header(None),  # <-- read header properly
 ):
     if not x_user_email:
         raise HTTPException(status_code=400, detail="x-user-email required")
@@ -397,7 +397,7 @@ def delete_problem(
     if not (is_creator or is_triager):
         raise HTTPException(status_code=403, detail="Not authorized to delete")
 
-    db.delete(p)  # ProblemVote / ProblemFollow FKs should be ON DELETE CASCADE in your migration
+    db.delete(p)  # votes/follows should cascade
     db.commit()
     return {"status": "ok"}
 
