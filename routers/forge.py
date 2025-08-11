@@ -1,6 +1,6 @@
 # forge.py (FastAPI Router for Forge)
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, aliased
 from pydantic import BaseModel
 from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User, Conversation, ConversationUser
 from database import get_db
@@ -54,27 +54,66 @@ def get_or_create_system_user(db: Session) -> User:
     db.refresh(sys)
     return sys
 
-def ensure_system_conversation(db: Session, user: User) -> Conversation:
+
+
+def find_existing_system_convo(db: Session, user: User) -> Conversation | None:
     """
-    Ensure the user has a dedicated System DM conversation:
-    name pattern: system:{user.email}
-    participants: System user + the user
+    Try to find a System DM by:
+      1) canonical name: system:{user.email}
+      2) any conversation that has BOTH (System, user) as participants
     """
-    name = f"system:{user.email}"
-    convo = db.query(Conversation).filter(Conversation.name == name).first()
+    canonical = f"system:{user.email}"
+    convo = db.query(Conversation).filter(Conversation.name == canonical).first()
     if convo:
         return convo
 
-    convo = Conversation(name=name)
-    db.add(convo)
-    db.flush()  # get convo.id
-
     sys_user = get_or_create_system_user(db)
+    cu1 = aliased(ConversationUser)
+    cu2 = aliased(ConversationUser)
 
-    # Add participants if missing
+    return (
+        db.query(Conversation)
+        .join(cu1, cu1.conversation_id == Conversation.id)
+        .join(cu2, cu2.conversation_id == Conversation.id)
+        .filter(cu1.user_id == user.id, cu2.user_id == sys_user.id)
+        .first()
+    )
+
+def ensure_system_conversation(db: Session, user: User) -> Conversation:
+    """
+    Idempotent: reuses an existing System DM if present; otherwise creates one.
+    Also normalizes the name to system:{user.email} and ensures both participants exist.
+    """
+    sys_user = get_or_create_system_user(db)
+    convo = find_existing_system_convo(db, user)
+
+    if convo:
+        # normalize name if it wasn't in canonical form
+        canonical = f"system:{user.email}"
+        if (convo.name or "") != canonical:
+            convo.name = canonical
+        # ensure both participants exist
+        existing = (
+            db.query(ConversationUser)
+            .filter(ConversationUser.conversation_id == convo.id,
+                    ConversationUser.user_id.in_([sys_user.id, user.id]))
+            .all()
+        )
+        present = {cu.user_id for cu in existing}
+        if sys_user.id not in present:
+            db.add(ConversationUser(user_id=sys_user.id, conversation_id=convo.id))
+        if user.id not in present:
+            db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
+        db.commit()
+        db.refresh(convo)
+        return convo
+
+    # create new canonical convo
+    convo = Conversation(name=f"system:{user.email}")
+    db.add(convo)
+    db.flush()
     db.add(ConversationUser(user_id=sys_user.id, conversation_id=convo.id))
     db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
-
     db.commit()
     db.refresh(convo)
     return convo
@@ -222,36 +261,29 @@ def join_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     if not user_email:
         raise HTTPException(status_code=401, detail="Login required to join idea.")
 
-    # Look up the joining user
     user = db.query(User).filter_by(email=user_email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    # Check if already joined
     existing = db.query(ForgeWorker).filter_by(user_email=user_email, idea_id=idea_id).first()
     if existing:
         raise HTTPException(status_code=400, detail="You have already joined this idea.")
 
-    # Add worker record
     join = ForgeWorker(user_email=user_email, idea_id=idea_id, user_id=user.id)
     db.add(join)
     db.commit()
 
-    # Notify creator in their System conversation
     idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
     if idea:
         creator_email = idea.user_email
         if creator_email and creator_email != user_email:
             creator = db.query(User).filter_by(email=creator_email).first()
             if creator:
-                # ensure creator's System DM exists
                 convo = ensure_system_conversation(db, creator)
                 sys_user = get_or_create_system_user(db)
-
                 content = f"👥 {user_email} has joined your idea “{idea.title}”. They want to work on it!"
-
                 db.add(InboxMessage(
-                    user_id=sys_user.id,                  # message from System
+                    user_id=sys_user.id,
                     content=content,
                     timestamp=datetime.utcnow(),
                     conversation_id=convo.id
