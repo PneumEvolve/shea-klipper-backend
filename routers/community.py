@@ -97,6 +97,59 @@ def update_community(
     db.refresh(community)
     return community
 
+@router.delete("/{community_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_community(
+    community_id: int,
+    current: tuple = Depends(get_current_user_with_db),
+):
+    current_user, db = current
+
+    community = db.query(Community).filter(Community.id == community_id).first()
+    if not community:
+        raise HTTPException(status_code=404, detail="Community not found")
+
+    # Only creator or approved admin can delete the community
+    is_creator = community.creator_id == current_user.id
+    is_admin = db.query(CommunityMember).filter_by(
+        community_id=community_id, user_id=current_user.id, is_admin=True, is_approved=True
+    ).first() is not None
+
+    if not (is_creator or is_admin):
+        raise HTTPException(status_code=403, detail="Not authorized to delete this community")
+
+    # ---- Hard delete related data (order matters if no DB-level cascade) ----
+    # Tasks for all projects in the community
+    db.query(CommunityProjectTask).filter(
+        CommunityProjectTask.project_id.in_(
+            db.query(CommunityProject.id).filter(CommunityProject.community_id == community_id)
+        )
+    ).delete(synchronize_session=False)
+
+    # Projects
+    db.query(CommunityProject).filter(CommunityProject.community_id == community_id)\
+        .delete(synchronize_session=False)
+
+    # Chat messages
+    db.query(CommunityChatMessage).filter(CommunityChatMessage.community_id == community_id)\
+        .delete(synchronize_session=False)
+
+    # Resources
+    db.query(Resource).filter(Resource.community_id == community_id)\
+        .delete(synchronize_session=False)
+
+    # Events
+    db.query(CommunityEvent).filter(CommunityEvent.community_id == community_id)\
+        .delete(synchronize_session=False)
+
+    # Members
+    db.query(CommunityMember).filter(CommunityMember.community_id == community_id)\
+        .delete(synchronize_session=False)
+
+    # Finally, the community itself
+    db.delete(community)
+    db.commit()
+    return
+
 @router.put("/{community_id}/layout")
 def update_layout_config(
     community_id: int,
