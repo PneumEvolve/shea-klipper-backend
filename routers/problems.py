@@ -142,20 +142,18 @@ class ProblemOut(BaseModel):
     id: int
     title: str
     description: str
-    domain: Optional[str]
-    scope: Optional[str]
-    severity: int
     status: str
-    created_by_email: Optional[str]
+    domain: Optional[str] = None
+    scope: Optional[str] = None
+    tags: Optional[List[str]] = None
+    severity: Optional[int] = None        # <-- was int
+    votes_count: int = 0                  # default 0 if DB has NULL
+    followers_count: int = 0              # default 0 if DB has NULL
     created_at: datetime
-    votes_count: int
-    followers_count: int
-    has_voted: bool = False
-    is_following: bool = False
-    conversation_id: Optional[int]
+    conversation_id: Optional[int] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True  # Pydantic v2; use orm_mode=True for v1
 
 # ---------- routes ----------
 
