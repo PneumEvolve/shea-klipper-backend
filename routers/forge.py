@@ -6,7 +6,7 @@ from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User, Conver
 from database import get_db
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import func
+from sqlalchemy import func, desc
 import uuid
 
 router = APIRouter()
@@ -129,9 +129,17 @@ def resolve_identity(request: Request) -> str:
 
 # === Get All Ideas ===
 @router.get("/forge/ideas")
-def get_ideas(db: Session = Depends(get_db)):
-    # Load ideas with the votes relationship
-    ideas = db.query(ForgeIdea).options(joinedload(ForgeIdea.votes)).all()
+def get_ideas(db: Session = Depends(get_db), limit: int = 100):
+    ideas = (
+        db.query(ForgeIdea)
+        .options(
+            selectinload(ForgeIdea.votes),
+            selectinload(ForgeIdea.workers).selectinload(ForgeWorker.user),
+        )
+        .order_by(desc(ForgeIdea.created_at), desc(ForgeIdea.id))  # newest first
+        .limit(limit)
+        .all()
+    )
 
     return [
         {
@@ -139,12 +147,14 @@ def get_ideas(db: Session = Depends(get_db)):
             "title": i.title,
             "description": i.description,
             "status": i.status,
-            "votes": [vote for vote in i.votes],  # Make sure votes are included
+            "created_at": i.created_at,             # <-- FE can sort or display
             "user_email": i.user_email,
+            "votes_count": len(i.votes or []),      # <-- quick count
+            "votes": [v for v in (i.votes or [])],  # <-- keep your existing shape
             "workers": [
-                {"email": worker.user_email, "username": worker.user.username}
-                for worker in i.workers
-            ]
+                {"email": w.user_email, "username": getattr(w.user, "username", None)}
+                for w in (i.workers or [])
+            ],
         }
         for i in ideas
     ]
