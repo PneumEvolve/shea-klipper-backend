@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+# problems.py
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
@@ -15,17 +16,19 @@ router = APIRouter()
 
 TRIAGER_EMAILS = {"sheaklipper@gmail.com"}  # you’re the only triager for now
 
+
 # ---------- helpers ----------
 
 def get_identity_email(x_user_email: Optional[str]) -> str:
     """
-    We standardize on a single "identity" string:
+    Standardize on a single "identity" string:
     - logged-in: real email
     - anonymous: "anon:{uuid}"
     """
     if not x_user_email:
-        raise HTTPException(status_code=400, detail="Missing x-user-email identity")
+        raise HTTPException(status_code=400, detail="x-user-email header required (email or anon:{uuid})")
     return x_user_email
+
 
 def get_or_create_system_user(db: Session) -> User:
     sys = db.query(User).filter(User.email == "system@domain.com").first()
@@ -37,12 +40,14 @@ def get_or_create_system_user(db: Session) -> User:
     db.refresh(sys)
     return sys
 
+
 def slugify(s: str) -> str:
     import re
     s = s.lower().strip()
     s = re.sub(r"[^a-z0-9]+", "-", s)
     s = re.sub(r"-+", "-", s).strip("-")
     return s or "problem"
+
 
 def ensure_problem_conversation(db: Session, problem: Problem, creator_email: Optional[str]) -> Conversation:
     """
@@ -87,6 +92,7 @@ def ensure_problem_conversation(db: Session, problem: Problem, creator_email: Op
     db.refresh(problem)
     return convo
 
+
 def annotate_flags_for_identity(db: Session, identity: Optional[str], problems: List[Problem]):
     """Attach has_voted and is_following flags per problem, for the caller."""
     if not identity:
@@ -99,12 +105,16 @@ def annotate_flags_for_identity(db: Session, identity: Optional[str], problems: 
     if not ids:
         return problems
 
-    votes = db.query(ProblemVote.problem_id)\
-        .filter(ProblemVote.problem_id.in_(ids), ProblemVote.voter_identity == identity)\
+    votes = (
+        db.query(ProblemVote.problem_id)
+        .filter(ProblemVote.problem_id.in_(ids), ProblemVote.voter_identity == identity)
         .all()
-    follows = db.query(ProblemFollow.problem_id)\
-        .filter(ProblemFollow.problem_id.in_(ids), ProblemFollow.identity == identity)\
+    )
+    follows = (
+        db.query(ProblemFollow.problem_id)
+        .filter(ProblemFollow.problem_id.in_(ids), ProblemFollow.identity == identity)
         .all()
+    )
 
     voted_ids = {pid for (pid,) in votes}
     follow_ids = {pid for (pid,) in follows}
@@ -113,6 +123,7 @@ def annotate_flags_for_identity(db: Session, identity: Optional[str], problems: 
         p.has_voted = p.id in voted_ids
         p.is_following = p.id in follow_ids
     return problems
+
 
 def recency_boost(created_at: datetime) -> float:
     """
@@ -128,6 +139,7 @@ def recency_boost(created_at: datetime) -> float:
         return 0.5
     return 0.0
 
+
 # ---------- schemas ----------
 
 class ProblemCreateIn(BaseModel):
@@ -138,6 +150,7 @@ class ProblemCreateIn(BaseModel):
     severity: Optional[int] = 3         # 1–5
     anonymous: Optional[bool] = False
 
+
 class ProblemOut(BaseModel):
     id: int
     title: str
@@ -146,14 +159,85 @@ class ProblemOut(BaseModel):
     domain: Optional[str] = None
     scope: Optional[str] = None
     tags: Optional[List[str]] = None
-    severity: Optional[int] = None        # <-- was int
-    votes_count: int = 0                  # default 0 if DB has NULL
-    followers_count: int = 0              # default 0 if DB has NULL
+    severity: Optional[int] = None          # nullable in DB -> optional here
+    votes_count: Optional[int] = 0          # nullable in DB -> optional here
+    followers_count: Optional[int] = 0      # nullable in DB -> optional here
     created_at: datetime
     conversation_id: Optional[int] = None
+    # client-facing flags
+    has_voted: bool = False
+    is_following: bool = False
 
     class Config:
         from_attributes = True  # Pydantic v2; use orm_mode=True for v1
+
+
+# ---------- toggle helpers used by routes ----------
+
+def toggle_vote(db: Session, problem_id: int, identity: str, commit: bool = False) -> bool:
+    vote = (
+        db.query(ProblemVote)
+        .filter(ProblemVote.problem_id == problem_id, ProblemVote.voter_identity == identity)
+        .first()
+    )
+
+    p = db.query(Problem).filter(Problem.id == problem_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Problem not found")
+
+    if vote:
+        db.delete(vote)
+        p.votes_count = max(0, (p.votes_count or 0) - 1)
+        changed_to = False
+    else:
+        db.add(ProblemVote(problem_id=problem_id, voter_identity=identity))
+        p.votes_count = (p.votes_count or 0) + 1
+        changed_to = True
+
+    if commit:
+        db.commit()
+    return changed_to
+
+
+def toggle_follow(db: Session, problem_id: int, identity: str, commit: bool = False) -> bool:
+    follow = (
+        db.query(ProblemFollow)
+        .filter(ProblemFollow.problem_id == problem_id, ProblemFollow.identity == identity)
+        .first()
+    )
+
+    p = db.query(Problem).filter(Problem.id == problem_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Problem not found")
+
+    if follow:
+        db.delete(follow)
+        p.followers_count = max(0, (p.followers_count or 0) - 1)
+        changed_to = False
+    else:
+        db.add(ProblemFollow(problem_id=problem_id, identity=identity))
+        p.followers_count = (p.followers_count or 0) + 1
+        changed_to = True
+
+        # If identity is a real user, add them to the conversation participants (so inbox sees it)
+        if not identity.startswith("anon:") and p.conversation_id:
+            user = db.query(User).filter(User.email == identity).first()
+            if user:
+                is_member = (
+                    db.query(ConversationUser)
+                    .filter(
+                        ConversationUser.user_id == user.id,
+                        ConversationUser.conversation_id == p.conversation_id,
+                    )
+                    .first()
+                )
+                if not is_member:
+                    db.add(ConversationUser(user_id=user.id, conversation_id=p.conversation_id))
+
+    if commit:
+        db.commit()
+    return changed_to
+
 
 # ---------- routes ----------
 
@@ -161,12 +245,9 @@ class ProblemOut(BaseModel):
 def create_problem(
     payload: ProblemCreateIn,
     db: Session = Depends(get_db),
-    x_user_email: Optional[str] = None
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
 ):
-    identity = x_user_email  # may be real email or anon:{uuid}
-    if not identity:
-        raise HTTPException(status_code=400, detail="x-user-email header required (email or anon:{uuid})")
-
+    identity = get_identity_email(x_user_email)  # real email or anon:{uuid}
     created_by = None if payload.anonymous or identity.startswith("anon:") else identity
 
     problem = Problem(
@@ -176,7 +257,7 @@ def create_problem(
         scope=payload.scope or "Systemic",
         severity=int(payload.severity or 3),
         status="Open",
-        anonymous=payload.anonymous or False,
+        anonymous=bool(payload.anonymous),
         created_by_email=created_by,
         created_at=datetime.utcnow(),
     )
@@ -200,7 +281,7 @@ def create_problem(
 @router.get("/problems", response_model=List[ProblemOut])
 def list_problems(
     db: Session = Depends(get_db),
-    x_user_email: Optional[str] = None,
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
     q: Optional[str] = None,
     status: Optional[str] = None,
     scope: Optional[str] = None,
@@ -208,7 +289,7 @@ def list_problems(
     sort: Optional[str] = "trending",     # 'trending' | 'votes' | 'new'
     near: Optional[str] = None,           # duplicate suggestion helper
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
 ):
     qry = db.query(Problem)
 
@@ -216,7 +297,7 @@ def list_problems(
         like = f"%{q.lower()}%"
         qry = qry.filter(or_(
             func.lower(Problem.title).like(like),
-            func.lower(Problem.description).like(like)
+            func.lower(Problem.description).like(like),
         ))
 
     if status:
@@ -231,28 +312,39 @@ def list_problems(
         like = f"%{near.lower()}%"
         qry = qry.filter(func.lower(Problem.title).like(like))
 
-    problems = qry.order_by(Problem.created_at.desc()).offset(offset).limit(limit).all()
+    problems = (
+        qry.order_by(Problem.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
     # annotate flags for caller
     problems = annotate_flags_for_identity(db, x_user_email, problems)
 
     # sort in Python to apply recency boost formula for 'trending'
+    import math
+
+    def score(p: Problem):
+        return math.log((p.votes_count or 0) + 1) + 0.5 * (p.severity or 3) + recency_boost(p.created_at)
+
     if sort == "votes":
-        problems.sort(key=lambda p: (p.votes_count, p.created_at), reverse=True)
+        problems.sort(key=lambda p: ((p.votes_count or 0), p.created_at), reverse=True)
     elif sort == "new":
         problems.sort(key=lambda p: p.created_at, reverse=True)
     else:
-        # trending: log(votes+1) + 0.5*severity + recency_boost
-        import math
-        def score(p: Problem):
-            return math.log((p.votes_count or 0) + 1) + 0.5 * (p.severity or 3) + recency_boost(p.created_at)
+        # trending
         problems.sort(key=lambda p: (score(p), p.created_at), reverse=True)
 
     return problems
 
 
 @router.get("/problems/{problem_id}", response_model=ProblemOut)
-def get_problem(problem_id: int, db: Session = Depends(get_db), x_user_email: Optional[str] = None):
+def get_problem(
+    problem_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
     p = db.query(Problem).filter(Problem.id == problem_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Problem not found")
@@ -260,101 +352,68 @@ def get_problem(problem_id: int, db: Session = Depends(get_db), x_user_email: Op
     # create conversation lazily if missing
     ensure_problem_conversation(db, p, creator_email=p.created_by_email)
 
-    # flags
-    p.has_voted = False
-    p.is_following = False
+    # flags for caller
     if x_user_email:
-        p.has_voted = db.query(ProblemVote.id).filter(
-            ProblemVote.problem_id == p.id,
-            ProblemVote.voter_identity == x_user_email
-        ).first() is not None
-        p.is_following = db.query(ProblemFollow.id).filter(
-            ProblemFollow.problem_id == p.id,
-            ProblemFollow.identity == x_user_email
-        ).first() is not None
+        p.has_voted = (
+            db.query(ProblemVote.id)
+            .filter(
+                ProblemVote.problem_id == p.id,
+                ProblemVote.voter_identity == x_user_email,
+            )
+            .first()
+            is not None
+        )
+        p.is_following = (
+            db.query(ProblemFollow.id)
+            .filter(
+                ProblemFollow.problem_id == p.id,
+                ProblemFollow.identity == x_user_email,
+            )
+            .first()
+            is not None
+        )
+    else:
+        p.has_voted = False
+        p.is_following = False
 
     return p
 
-# --- toggle helpers used by routes ---
-
-def toggle_vote(db: Session, problem_id: int, identity: str, commit: bool = False) -> bool:
-    vote = db.query(ProblemVote).filter(
-        ProblemVote.problem_id == problem_id,
-        ProblemVote.voter_identity == identity
-    ).first()
-
-    p = db.query(Problem).filter(Problem.id == problem_id).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Problem not found")
-
-    if vote:
-        db.delete(vote)
-        p.votes_count = max(0, (p.votes_count or 0) - 1)
-        changed_to = False
-    else:
-        db.add(ProblemVote(problem_id=problem_id, voter_identity=identity))
-        p.votes_count = (p.votes_count or 0) + 1
-        changed_to = True
-
-    if commit:
-        db.commit()
-    return changed_to
-
-def toggle_follow(db: Session, problem_id: int, identity: str, commit: bool = False) -> bool:
-    follow = db.query(ProblemFollow).filter(
-        ProblemFollow.problem_id == problem_id,
-        ProblemFollow.identity == identity
-    ).first()
-
-    p = db.query(Problem).filter(Problem.id == problem_id).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Problem not found")
-
-    if follow:
-        db.delete(follow)
-        p.followers_count = max(0, (p.followers_count or 0) - 1)
-        changed_to = False
-    else:
-        db.add(ProblemFollow(problem_id=problem_id, identity=identity))
-        p.followers_count = (p.followers_count or 0) + 1
-        changed_to = True
-
-        # If identity is a real user, add them to the conversation participants (so inbox sees it)
-        if not identity.startswith("anon:"):
-            user = db.query(User).filter(User.email == identity).first()
-            if user and p.conversation_id:
-                is_member = db.query(ConversationUser).filter(
-                    ConversationUser.user_id == user.id,
-                    ConversationUser.conversation_id == p.conversation_id
-                ).first()
-                if not is_member:
-                    db.add(ConversationUser(user_id=user.id, conversation_id=p.conversation_id))
-
-    if commit:
-        db.commit()
-    return changed_to
-
-# --- actions ---
 
 @router.post("/problems/{problem_id}/vote")
-def vote_problem(problem_id: int, db: Session = Depends(get_db), x_user_email: Optional[str] = None):
+def vote_problem(
+    problem_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
     identity = get_identity_email(x_user_email)
     changed_to = toggle_vote(db, problem_id, identity, commit=True)
     return {"status": "ok", "voted": changed_to}
 
+
 @router.post("/problems/{problem_id}/follow")
-def follow_problem(problem_id: int, db: Session = Depends(get_db), x_user_email: Optional[str] = None):
+def follow_problem(
+    problem_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
     identity = get_identity_email(x_user_email)
     changed_to = toggle_follow(db, problem_id, identity, commit=True)
     return {"status": "ok", "following": changed_to}
 
-# --- triage-only (you) ---
+
+# ---------- triage-only (you) ----------
 
 class StatusIn(BaseModel):
     status: str
 
+
 @router.post("/problems/{problem_id}/status")
-def update_status(problem_id: int, payload: StatusIn, db: Session = Depends(get_db), x_user_email: Optional[str] = None):
+def update_status(
+    problem_id: int,
+    payload: StatusIn,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
     if x_user_email not in TRIAGER_EMAILS:
         raise HTTPException(status_code=403, detail="Not authorized")
 
@@ -366,8 +425,14 @@ def update_status(problem_id: int, payload: StatusIn, db: Session = Depends(get_
     db.commit()
     return {"status": "ok"}
 
+
 @router.post("/problems/{problem_id}/merge/{dup_id}")
-def merge_duplicate(problem_id: int, dup_id: int, db: Session = Depends(get_db), x_user_email: Optional[str] = None):
+def merge_duplicate(
+    problem_id: int,
+    dup_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
     if x_user_email not in TRIAGER_EMAILS:
         raise HTTPException(status_code=403, detail="Not authorized")
 
