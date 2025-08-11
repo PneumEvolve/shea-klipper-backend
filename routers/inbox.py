@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, selectinload
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import func, distinct
 
 from models import InboxMessage, Conversation, ConversationUser, User
@@ -11,6 +11,8 @@ from database import get_db
 from models import ForgeIdea as IdeaModel
 
 router = APIRouter()
+
+ADMIN_EMAIL = "sheaklipper@gmail.com"
 
 # ========= Schemas =========
 
@@ -26,6 +28,14 @@ class DMSendIn(BaseModel):
 class IdeaSendIn(BaseModel):
     sender_email: str
     content: str
+
+class FeedbackIn(BaseModel):
+    contact: str
+    interests: List[str] = []
+    idea: Optional[str] = ""
+    bugs: Optional[str] = ""
+    skills: Optional[str] = ""
+    extra: Optional[str] = ""
 
 
 # ========= Helpers =========
@@ -161,6 +171,47 @@ def get_or_create_idea_conversation(db: Session, idea_id: int) -> Conversation:
 
     convo = Conversation(name=key)
     db.add(convo)
+    db.commit()
+    db.refresh(convo)
+    return convo
+
+def get_or_create_user_by_email_or_create(db: Session, email: str, username: Optional[str] = None) -> User:
+    user = db.query(User).filter(User.email == email).first()
+    if user:
+        return user
+    user = User(email=email, username=username or (email.split("@")[0] if "@" in email else email))
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+def get_or_create_feedback_conversation(db: Session, system_user: User, admin_user: User) -> Conversation:
+    # Try to find an existing "feedback" conversation that includes the admin
+    convo = (
+        db.query(Conversation)
+        .join(ConversationUser)
+        .filter(Conversation.name == "feedback", ConversationUser.user_id == admin_user.id)
+        .first()
+    )
+    if convo:
+        # Ensure system is in it
+        has_sys = (
+            db.query(ConversationUser)
+            .filter(ConversationUser.conversation_id == convo.id, ConversationUser.user_id == system_user.id)
+            .first()
+        )
+        if not has_sys:
+            db.add(ConversationUser(user_id=system_user.id, conversation_id=convo.id))
+            db.commit()
+        return convo
+
+    # Create fresh
+    convo = Conversation(name="feedback")
+    db.add(convo)
+    db.flush()  # ensure convo.id
+
+    db.add(ConversationUser(user_id=admin_user.id, conversation_id=convo.id))
+    db.add(ConversationUser(user_id=system_user.id, conversation_id=convo.id))
     db.commit()
     db.refresh(convo)
     return convo
@@ -680,3 +731,38 @@ def unfollow_idea_conversation(idea_id: int, user_email: str, db: Session = Depe
     db.delete(link)
     db.commit()
     return {"status": "ok", "message": "unfollowed", "conversation_id": convo.id}
+
+@router.post("/feedback")
+def receive_feedback(payload: FeedbackIn, request: Request, db: Session = Depends(get_db)):
+    system_user = get_or_create_system_user(db)
+    admin_user = get_or_create_user_by_email_or_create(db, ADMIN_EMAIL, username="Admin")
+
+    convo = get_or_create_feedback_conversation(db, system_user, admin_user)
+
+    # Format a readable message
+    lines = [
+        "📝 New Contribution",
+        f"• Contact: {payload.contact or '—'}",
+        f"• Interests: {', '.join(payload.interests) if payload.interests else '—'}",
+        "",
+        f"💡 Idea:\n{payload.idea or '—'}",
+        "",
+        f"🐞 Bugs:\n{payload.bugs or '—'}",
+        "",
+        f"🧰 Skills:\n{payload.skills or '—'}",
+        "",
+        f"➕ Extra:\n{payload.extra or '—'}",
+    ]
+    content = "\n".join(lines)
+
+    msg = InboxMessage(
+        user_id=system_user.id,            # message appears from System
+        content=content,
+        timestamp=datetime.utcnow(),
+        conversation_id=convo.id,
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+
+    return {"status": "ok", "message_id": msg.id, "conversation_id": convo.id}
