@@ -576,30 +576,6 @@ class LivingPlanSection(Base):
     notes = Column(Text, default="")
     owner_email = Column(String, index=True)
 
-
-class Problem(Base):
-    __tablename__ = "problems"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(100), nullable=False)
-    description = Column(Text, nullable=True)
-    status = Column(String(20), default="open")  # open, prioritizing, solving, solved
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    votes = relationship("ProblemVote", back_populates="problem")
-
-
-class ProblemVote(Base):
-    __tablename__ = "problem_votes"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=False)
-    problem_id = Column(Integer, ForeignKey("problems.id"))
-    vote_type = Column(String, default="upvote")
-    timestamp = Column(DateTime, default=datetime.utcnow)
-
-    problem = relationship("Problem", back_populates="votes")
-
 class ForgeIdea(Base):
     __tablename__ = "forge_ideas"
 
@@ -650,3 +626,50 @@ class ForgeWorker(Base):
     # Relationship to ForgeIdea
     idea = relationship("ForgeIdea", back_populates="workers")  # Ensure 'workers' exists on ForgeIdea model
 
+class Problem(Base):
+    __tablename__ = "problems"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, index=True, nullable=False)
+    description = Column(Text, nullable=False)
+    domain = Column(String, index=True)                 # optional, like "Education", "Economics"
+    scope = Column(String, default="Systemic")          # "Personal" | "Community" | "Systemic"
+    severity = Column(Integer, default=3)               # 1–5
+    status = Column(String, default="Open")             # Open → Triaged → In Discovery → ... → Solved/Archived
+    anonymous = Column(Boolean, default=False)
+    created_by_email = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    duplicate_of_id = Column(Integer, ForeignKey("problems.id"), nullable=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True)
+
+    votes_count = Column(Integer, default=0, nullable=False)
+    followers_count = Column(Integer, default=0, nullable=False)
+
+    # relationships
+    duplicates = relationship("Problem", remote_side=[id])
+    conversation = relationship("Conversation")
+
+class ProblemVote(Base):
+    __tablename__ = "problem_votes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), index=True, nullable=False)
+    voter_identity = Column(String, index=True, nullable=False)  # email OR "anon:{uuid}"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("problem_id", "voter_identity", name="uq_problem_vote_one"),
+    )
+
+class ProblemFollow(Base):
+    __tablename__ = "problem_follows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), index=True, nullable=False)
+    identity = Column(String, index=True, nullable=False)  # email OR "anon:{uuid}"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("problem_id", "identity", name="uq_problem_follow_one"),
+    )
