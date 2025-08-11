@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
-from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User
+from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User, Conversation, ConversationUser
 from database import get_db
 from datetime import datetime
 from typing import Optional
@@ -10,6 +10,8 @@ from sqlalchemy import func
 import uuid
 
 router = APIRouter()
+
+SYSTEM_EMAIL = "system@domain.com"
 
 # === Pydantic Schemas ===
 class IdeaIn(BaseModel):
@@ -41,6 +43,41 @@ class ForgeIdeaNote(ForgeIdeaNoteBase):
 
     class Config:
         orm_mode = True  # Enable ORM mode to handle SQLAlchemy model
+
+def get_or_create_system_user(db: Session) -> User:
+    sys = db.query(User).filter(User.email == SYSTEM_EMAIL).first()
+    if sys:
+        return sys
+    sys = User(email=SYSTEM_EMAIL, username="System")
+    db.add(sys)
+    db.commit()
+    db.refresh(sys)
+    return sys
+
+def ensure_system_conversation(db: Session, user: User) -> Conversation:
+    """
+    Ensure the user has a dedicated System DM conversation:
+    name pattern: system:{user.email}
+    participants: System user + the user
+    """
+    name = f"system:{user.email}"
+    convo = db.query(Conversation).filter(Conversation.name == name).first()
+    if convo:
+        return convo
+
+    convo = Conversation(name=name)
+    db.add(convo)
+    db.flush()  # get convo.id
+
+    sys_user = get_or_create_system_user(db)
+
+    # Add participants if missing
+    db.add(ConversationUser(user_id=sys_user.id, conversation_id=convo.id))
+    db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
+
+    db.commit()
+    db.refresh(convo)
+    return convo
 
 def resolve_identity(request: Request) -> str:
     ident = request.headers.get("x-user-email")
@@ -185,40 +222,40 @@ def join_idea(idea_id: int, request: Request, db: Session = Depends(get_db)):
     if not user_email:
         raise HTTPException(status_code=401, detail="Login required to join idea.")
 
-    # Fetch the user_id based on user_email
+    # Look up the joining user
     user = db.query(User).filter_by(email=user_email).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
 
-    user_id = user.id  # Fetch the user_id from the User table
-
-    # Check if the user has already joined the idea
+    # Check if already joined
     existing = db.query(ForgeWorker).filter_by(user_email=user_email, idea_id=idea_id).first()
     if existing:
         raise HTTPException(status_code=400, detail="You have already joined this idea.")
 
-    # Add the user to the idea's workers list, including the user_id
-    join = ForgeWorker(user_email=user_email, idea_id=idea_id, user_id=user_id)  # Add user_id here
+    # Add worker record
+    join = ForgeWorker(user_email=user_email, idea_id=idea_id, user_id=user.id)
     db.add(join)
     db.commit()
 
-    # Notify the creator of the idea
-    idea = db.query(ForgeIdea).get(idea_id)
+    # Notify creator in their System conversation
+    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
     if idea:
-        creator_email = idea.user_email  # Assumes creator's email is stored in `user_email` field
+        creator_email = idea.user_email
         if creator_email and creator_email != user_email:
-            content = f"👥 {user_email} has joined your idea \"{idea.title}\". They want to work on it!"
-
-            # Fetch the user_id for the creator from the User table
             creator = db.query(User).filter_by(email=creator_email).first()
             if creator:
-                # Creating the inbox notification for the creator
-                inbox_message = InboxMessage(
-                    user_id=creator.id,  # Using the user_id, not user_email
+                # ensure creator's System DM exists
+                convo = ensure_system_conversation(db, creator)
+                sys_user = get_or_create_system_user(db)
+
+                content = f"👥 {user_email} has joined your idea “{idea.title}”. They want to work on it!"
+
+                db.add(InboxMessage(
+                    user_id=sys_user.id,                  # message from System
                     content=content,
-                    timestamp=datetime.utcnow()  # Adding the timestamp
-                )
-                db.add(inbox_message)
+                    timestamp=datetime.utcnow(),
+                    conversation_id=convo.id
+                ))
                 db.commit()
 
     return {"message": "You've joined this idea and notified the creator."}
