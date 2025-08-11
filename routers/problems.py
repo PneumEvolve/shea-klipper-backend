@@ -167,6 +167,7 @@ class ProblemOut(BaseModel):
     # client-facing flags
     has_voted: bool = False
     is_following: bool = False
+    created_by_email: Optional[str] = None
 
     class Config:
         from_attributes = True  # Pydantic v2; use orm_mode=True for v1
@@ -377,6 +378,28 @@ def get_problem(
         p.is_following = False
 
     return p
+
+@router.delete("/problems/{problem_id}")
+def delete_problem(
+    problem_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = None
+):
+    if not x_user_email:
+        raise HTTPException(status_code=400, detail="x-user-email required")
+
+    p = db.query(Problem).filter(Problem.id == problem_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Problem not found")
+
+    is_creator = (p.created_by_email and x_user_email == p.created_by_email)
+    is_triager = x_user_email in TRIAGER_EMAILS
+    if not (is_creator or is_triager):
+        raise HTTPException(status_code=403, detail="Not authorized to delete")
+
+    db.delete(p)  # ProblemVote / ProblemFollow FKs should be ON DELETE CASCADE in your migration
+    db.commit()
+    return {"status": "ok"}
 
 
 @router.post("/problems/{problem_id}/vote")
