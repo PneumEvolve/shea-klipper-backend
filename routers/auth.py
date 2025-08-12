@@ -11,7 +11,7 @@ import requests
 from dotenv import load_dotenv
 import os
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Deque, Dict
 from utils.email import send_email
 from schemas import UserResponse, UserCreate, ProfilePicUpdate
 from models import Category, user_categories, User
@@ -19,6 +19,8 @@ from sqlalchemy import text
 from database import get_db
 from schemas import UsernameUpdate
 from jose import JWTError
+import time
+from collections import deque
 
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -37,6 +39,54 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# failure tracking: key = (ip, email_lower)
+_FAILED: Dict[Tuple[str, str], Deque[float]] = {}
+_CHALLENGED_UNTIL: Dict[Tuple[str, str], float] = {}
+
+MAX_ATTEMPTS = 5
+WINDOW_SECONDS = 15 * 60
+CHALLENGE_SECONDS = 60 * 60
+
+def _now() -> float:
+    return time.time()
+
+def get_client_ip(request: Request) -> str:
+    # Honor proxy header if present (Render/NGINX)
+    xfwd = request.headers.get("x-forwarded-for")
+    if xfwd:
+        # take first ip
+        return xfwd.split(",")[0].strip()
+    return request.client.host if request.client else "0.0.0.0"
+
+def record_failure(ip: str, email: str):
+    key = (ip, email.lower())
+    q = _FAILED.setdefault(key, deque())
+    now = _now()
+    q.append(now)
+    # drop old
+    cutoff = now - WINDOW_SECONDS
+    while q and q[0] < cutoff:
+        q.popleft()
+    # if over limit, start a challenge window
+    if len(q) >= MAX_ATTEMPTS:
+        _CHALLENGED_UNTIL[key] = now + CHALLENGE_SECONDS
+
+def clear_failures(ip: str, email: str):
+    key = (ip, email.lower())
+    _FAILED.pop(key, None)
+    _CHALLENGED_UNTIL.pop(key, None)
+
+def should_require_captcha(ip: str, email: str) -> bool:
+    key = (ip, email.lower())
+    until = _CHALLENGED_UNTIL.get(key)
+    if not until:
+        return False
+    if _now() > until:
+        # challenge expired
+        _CHALLENGED_UNTIL.pop(key, None)
+        _FAILED.pop(key, None)
+        return False
+    return True
 
 def hash_password(password: str):
     return pwd_context.hash(password)
@@ -112,20 +162,31 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
+    ip = get_client_ip(request)
+    email = (form_data.username or "").strip().lower()
+
+    # Read form (for optional recaptcha_token)
     form = await request.form()
     recaptcha_token = form.get("recaptcha_token")
-    if not recaptcha_token or not verify_recaptcha(recaptcha_token):
-        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
 
-    user = db.query(User).filter(User.email == form_data.username).first()
+    # If this tuple is challenged, require valid CAPTCHA
+    if should_require_captcha(ip, email):
+        if not recaptcha_token or not verify_recaptcha(recaptcha_token):
+            raise HTTPException(status_code=400, detail="reCAPTCHA required (too many recent failures)")
+
+    # Credential check
+    user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
+        record_failure(ip, email)
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Success — clear failures/challenge
+    clear_failures(ip, email)
 
     access_token = create_access_token({"sub": user.email, "id": user.id})
     refresh_token = create_refresh_token({"sub": user.email, "id": user.id})
 
     is_localhost = "localhost" in str(request.base_url)
-
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
@@ -135,7 +196,6 @@ async def login(
         path="/",
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
-
     return {"access_token": access_token, "token_type": "bearer"}
 
 class Token(BaseModel):
