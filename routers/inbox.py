@@ -596,11 +596,7 @@ def get_idea_conversation(idea_id: int, db: Session = Depends(get_db)):
 
 @router.get("/ideas/{idea_id}/conversation/messages")
 def get_idea_conversation_messages(idea_id: int, db: Session = Depends(get_db)):
-    """
-    Return messages for the idea's conversation.
-    Signed-in not strictly required to read; lock down if you prefer.
-    """
-    system_user = get_or_create_system_user(db)  # for from_system flag if you ever post system events
+    system_user = get_or_create_system_user(db)
     convo = get_or_create_idea_conversation(db, idea_id)
 
     msgs = (
@@ -610,39 +606,54 @@ def get_idea_conversation_messages(idea_id: int, db: Session = Depends(get_db)):
         .order_by(InboxMessage.timestamp.asc())
         .all()
     )
+
+    def safe_display(m):
+        if m.user_id == system_user.id:
+            return "System"
+        if m.user and getattr(m.user, "username", None):
+            return m.user.username
+        if m.user_id:
+            return f"User {m.user_id}"
+        return "User"
+
     return [
         {
             "id": m.id,
             "content": m.content,
             "timestamp": m.timestamp,
             "read": m.read,
-            
-            "from_username": m.user.username if m.user else None,
+            "from_username": (m.user.username if m.user else None),
             "from_user_id": m.user_id,
             "from_system": (m.user_id == system_user.id),
-            "from_display": (
-                "System"
-                if m.user_id == system_user.id
-                else (m.user.username or (m.user.email if m.user else "User"))
-            ),
+            "from_display": safe_display(m),   # ← never email
         }
         for m in msgs
     ]
 
 
 @router.post("/ideas/{idea_id}/conversation/send")
-def send_to_idea_conversation(idea_id: int, payload: IdeaSendIn, db: Session = Depends(get_db)):
+def send_to_idea_conversation(
+    idea_id: int,
+    payload: IdeaSendIn,
+    db: Session = Depends(get_db),
+):
     """
     Send a message into the idea conversation.
     Automatically enrolls the sender as a participant so it appears in their feed.
     """
-    sender = get_user_by_email(db, payload.sender_email)
+    sender = get_user_by_email(db, (payload.sender_email or "").strip().lower())
+    if not sender:
+        raise HTTPException(status_code=401, detail="User not found")
+
     convo = get_or_create_idea_conversation(db, idea_id)
 
-    # Ensure membership exists so convo shows up in the user's feed
+    # Ensure membership so convo shows in sender's feed
     link = (
         db.query(ConversationUser)
-        .filter(ConversationUser.conversation_id == convo.id, ConversationUser.user_id == sender.id)
+        .filter(
+            ConversationUser.conversation_id == convo.id,
+            ConversationUser.user_id == sender.id,
+        )
         .first()
     )
     if not link:
@@ -651,12 +662,18 @@ def send_to_idea_conversation(idea_id: int, payload: IdeaSendIn, db: Session = D
     msg = InboxMessage(
         user_id=sender.id,
         conversation_id=convo.id,
-        content=payload.content,
+        content=(payload.content or "").strip(),
         timestamp=datetime.utcnow(),
     )
+    if not msg.content:
+        raise HTTPException(status_code=400, detail="Empty message")
+
     db.add(msg)
     db.commit()
     db.refresh(msg)
+
+    # Build a privacy-safe display (never email)
+    display = sender.username if sender.username else f"User {msg.user_id}"
 
     return {
         "status": "ok",
@@ -666,10 +683,9 @@ def send_to_idea_conversation(idea_id: int, payload: IdeaSendIn, db: Session = D
             "content": msg.content,
             "timestamp": msg.timestamp,
             "read": msg.read,
-            
             "from_user_id": msg.user_id,
-            "from_username": sender.username,
-            "from_display": sender.username or sender.email or "You",
+            "from_username": sender.username if sender.username else None,
+            "from_display": display,   # ← username or "User <id>", never email
         },
     }
 
