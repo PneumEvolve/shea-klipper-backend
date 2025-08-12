@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from sqlalchemy.orm import Session, joinedload, aliased, selectinload
 from pydantic import BaseModel
+from enum import Enum
 from models import ForgeIdea, ForgeVote, ForgeWorker, InboxMessage, User, Conversation, ConversationUser
 from database import get_db
 from datetime import datetime
@@ -43,6 +44,15 @@ class ForgeIdeaNote(ForgeIdeaNoteBase):
 
     class Config:
         orm_mode = True  # Enable ORM mode to handle SQLAlchemy model
+
+class IdeaStatus(str, Enum):
+    Proposed = "Proposed"
+    Brainstorming = "Brainstorming"
+    Working = "Working On"
+    Complete = "Complete"
+
+class IdeaStatusUpdate(BaseModel):
+    status: IdeaStatus
 
 def get_or_create_system_user(db: Session) -> User:
     sys = db.query(User).filter(User.email == SYSTEM_EMAIL).first()
@@ -227,6 +237,7 @@ def get_idea(idea_id: int, db: Session = Depends(get_db)):
         "id": idea.id,
         "title": idea.title,
         "description": idea.description,
+        "status": idea.status,
         "user_email": idea.user_email,
         "workers": workers_data,  # Adding workers data
         "notes": idea.notes  # Return the notes directly, since it's now part of the ForgeIdea model
@@ -352,3 +363,49 @@ async def update_notes(idea_id: int, note_content: NoteContent, db: Session = De
     db.commit()  # Save the changes to the database
     db.refresh(idea)  # Refresh the idea instance to get updated data
     return {"message": "Note updated successfully", "idea": idea}
+
+@router.patch("/forge/ideas/{idea_id}/status")
+def set_idea_status(
+    idea_id: int,
+    payload: IdeaStatusUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    user_email = request.headers.get("x-user-email")
+    if not user_email:
+        raise HTTPException(status_code=401, detail="Login required")
+
+    idea = db.query(ForgeIdea).filter(ForgeIdea.id == idea_id).first()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Idea not found")
+
+    # Only creator or Shea can change status
+    if user_email != idea.user_email and user_email != "sheaklipper@gmail.com":
+        raise HTTPException(status_code=403, detail="Not authorized to change status")
+
+    old = idea.status
+    new = payload.status.value
+    if old == new:
+        return {"message": "No change", "idea_id": idea_id, "status": new}
+
+    idea.status = new
+    db.commit()
+    db.refresh(idea)
+
+    # (Optional) Notify the creator (and/or workers) via System DM
+    try:
+        creator = db.query(User).filter_by(email=idea.user_email).first()
+        if creator:
+            convo = ensure_system_conversation(db, creator)
+            sys_user = get_or_create_system_user(db)
+            db.add(InboxMessage(
+                user_id=sys_user.id,
+                content=f"🔄 Status of “{idea.title}” changed: {old} → {new}",
+                timestamp=datetime.utcnow(),
+                conversation_id=convo.id,
+            ))
+            db.commit()
+    except Exception:
+        db.rollback()  # don’t fail the status change if notification fails
+
+    return {"message": "Status updated", "idea_id": idea_id, "status": new}
