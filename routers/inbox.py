@@ -616,9 +616,9 @@ def get_idea_conversation_messages(idea_id: int, db: Session = Depends(get_db)):
             "content": m.content,
             "timestamp": m.timestamp,
             "read": m.read,
-            "from_email": m.user.email if m.user else None,
+            
             "from_username": m.user.username if m.user else None,
-            "from_user_id": m.from_user_id,
+            "from_user_id": m.user_id,
             "from_system": (m.user_id == system_user.id),
             "from_display": (
                 "System"
@@ -666,7 +666,8 @@ def send_to_idea_conversation(idea_id: int, payload: IdeaSendIn, db: Session = D
             "content": msg.content,
             "timestamp": msg.timestamp,
             "read": msg.read,
-            "from_email": sender.email,
+            
+            "from_user_id": msg.user_id,
             "from_username": sender.username,
             "from_display": sender.username or sender.email or "You",
         },
