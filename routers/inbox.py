@@ -618,6 +618,7 @@ def get_idea_conversation_messages(idea_id: int, db: Session = Depends(get_db)):
             "read": m.read,
             "from_email": m.user.email if m.user else None,
             "from_username": m.user.username if m.user else None,
+            "from_user_id": m.from_user_id
             "from_system": (m.user_id == system_user.id),
             "from_display": (
                 "System"
