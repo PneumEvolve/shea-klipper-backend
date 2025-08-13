@@ -446,6 +446,10 @@ def follow_problem(
     x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
 ):
     identity = get_identity_email(x_user_email)
+    if identity.startswith("anon:"):
+        # Not logged in → cannot follow
+        raise HTTPException(status_code=401, detail="Login required to follow")
+
     changed_to = toggle_follow(db, problem_id, identity, commit=True)
     return {"status": "ok", "following": changed_to}
 
