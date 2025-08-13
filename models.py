@@ -640,7 +640,12 @@ class Problem(Base):
     created_by_email = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
-    accepted_solution_id = Column(Integer, ForeignKey("solutions.id"), nullable=True)
+    # Columns (if not already present)
+    accepted_solution_id = Column(
+        Integer,
+        ForeignKey("solutions.id", name="fk_problems_accepted_solution_id"),
+        nullable=True,
+    )
     solved_at = Column(DateTime, nullable=True)
 
     duplicate_of_id = Column(Integer, ForeignKey("problems.id"), nullable=True)
@@ -652,8 +657,21 @@ class Problem(Base):
     # relationships
     duplicates = relationship("Problem", remote_side=[id])
     conversation = relationship("Conversation")
-    accepted_solution = relationship("Solution", foreign_keys=[accepted_solution_id], uselist=False)
-    
+    solutions = relationship(
+        "Solution",
+        back_populates="problem",
+        foreign_keys="Solution.problem_id",
+        passive_deletes=True,              # DB handles ON DELETE CASCADE; avoids extra SELECTs
+        # cascade="all, delete-orphan",    # optional: only if you want ORM to delete children too
+    )
+
+    accepted_solution = relationship(
+        "Solution",
+        foreign_keys=[accepted_solution_id],
+        uselist=False,
+        post_update=True,                  # breaks circular dependency on flush
+    )
+
 class ProblemVote(Base):
     __tablename__ = "problem_votes"
 
@@ -695,7 +713,11 @@ class Solution(Base):
 
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True)
 
-    problem = relationship("Problem")
+    problem = relationship(
+        "Problem",
+        back_populates="solutions",
+        foreign_keys=[problem_id],
+    )
     conversation = relationship("Conversation")
 
 
