@@ -584,6 +584,66 @@ def send_to_conversation(conversation_id: int, data: ConversationSendIn, db: Ses
         },
     }
 
+class LeaveIn(BaseModel):
+    user_email: str
+
+@router.post("/conversations/{conversation_id}/leave")
+def leave_conversation(conversation_id: int, payload: LeaveIn, db: Session = Depends(get_db)):
+    user = get_user_by_email(db, (payload.user_email or "").strip().lower())
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Don’t allow leaving your System conversation
+    if convo.name == f"system:{user.id}":
+        raise HTTPException(status_code=400, detail="Cannot leave your System conversation")
+
+    link = (
+        db.query(ConversationUser)
+        .filter(ConversationUser.conversation_id == conversation_id,
+                ConversationUser.user_id == user.id)
+        .first()
+    )
+    if not link:
+        return {"status": "ok", "message": "not_member"}
+
+    db.delete(link)
+    db.commit()
+
+    # If no participants remain, clean up the convo + messages
+    still_has_members = (
+        db.query(ConversationUser.id)
+        .filter(ConversationUser.conversation_id == conversation_id)
+        .first()
+    )
+    if not still_has_members:
+        db.query(InboxMessage).filter(InboxMessage.conversation_id == conversation_id).delete()
+        db.query(Conversation).filter(Conversation.id == conversation_id).delete()
+        db.commit()
+        return {"status": "ok", "message": "left_and_deleted"}
+
+    return {"status": "ok", "message": "left"}
+
+@router.delete("/conversations/{conversation_id}")
+def admin_delete_conversation(conversation_id: int, user_email: str, db: Session = Depends(get_db)):
+    admin = get_user_by_email(db, (user_email or "").strip().lower())
+    if admin.email != ADMIN_EMAIL:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Be conservative: don’t let admin delete other users’ System threads
+    if (convo.name or "").startswith("system:") and convo.name != f"system:{admin.id}":
+        raise HTTPException(status_code=400, detail="Refusing to delete another user's System conversation")
+
+    db.query(InboxMessage).filter(InboxMessage.conversation_id == conversation_id).delete()
+    db.query(ConversationUser).filter(ConversationUser.conversation_id == conversation_id).delete()
+    db.query(Conversation).filter(Conversation.id == conversation_id).delete()
+    db.commit()
+    return {"status": "ok", "message": "deleted"}
+
 @router.get("/ideas/{idea_id}/conversation")
 def get_idea_conversation(idea_id: int, db: Session = Depends(get_db)):
     convo = get_or_create_idea_conversation(db, idea_id)
