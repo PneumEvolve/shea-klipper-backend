@@ -5,6 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
+import math
 
 from database import get_db
 from models import (
@@ -15,6 +16,10 @@ from models import (
 router = APIRouter()
 
 TRIAGER_EMAILS = {"sheaklipper@gmail.com"}  # you’re the only triager for now
+
+ALLOWED_STATUSES = {
+  "Open","Triaged","In Discovery","In Design","In Experiment","In Rollout","Solved","Archived"
+}
 
 
 # ---------- helpers ----------
@@ -172,6 +177,13 @@ class ProblemOut(BaseModel):
     class Config:
         from_attributes = True  # Pydantic v2; use orm_mode=True for v1
 
+class ProblemCreateIn(BaseModel):
+    title: str = Field(..., min_length=5, max_length=200)
+    description: str = Field(..., min_length=20, max_length=8000)
+    domain: Optional[str] = None
+    scope: str = Field("Systemic", pattern="^(Personal|Community|Systemic)$")
+    severity: int = Field(3, ge=1, le=5)
+    anonymous: bool = False
 
 # ---------- toggle helpers used by routes ----------
 
@@ -324,10 +336,24 @@ def list_problems(
     problems = annotate_flags_for_identity(db, x_user_email, problems)
 
     # sort in Python to apply recency boost formula for 'trending'
-    import math
+    
+
+    now = datetime.utcnow()  # compute once per request
 
     def score(p: Problem):
-        return math.log((p.votes_count or 0) + 1) + 0.5 * (p.severity or 3) + recency_boost(p.created_at)
+        # Age penalty: slowly pushes very old, low-vote items down; caps after ~6 months
+        age_days = (now - p.created_at).days if p.created_at else 0
+        age_penalty = -0.02 * min(age_days, 180)
+
+        # Clamp severity to [1,5] to avoid weird data skew
+        sev = max(min(p.severity or 3, 5), 1)
+
+        return (
+            math.log((p.votes_count or 0) + 1)
+            + 0.5 * sev
+            + recency_boost(p.created_at)
+            + age_penalty
+        )
 
     if sort == "votes":
         problems.sort(key=lambda p: ((p.votes_count or 0), p.created_at), reverse=True)
@@ -437,6 +463,7 @@ def update_status(
     db: Session = Depends(get_db),
     x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
 ):
+    # only triager(s)
     if x_user_email not in TRIAGER_EMAILS:
         raise HTTPException(status_code=403, detail="Not authorized")
 
@@ -444,9 +471,30 @@ def update_status(
     if not p:
         raise HTTPException(status_code=404, detail="Problem not found")
 
-    p.status = payload.status
+    new_status = (payload.status or "").strip()
+    if new_status not in ALLOWED_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    old_status = p.status
+    if old_status == new_status:
+        # no-op; nothing to announce
+        return {"status": "ok", "from": old_status, "to": new_status}
+
+    p.status = new_status
+    db.add(p)
+
+    # Announce into the conversation so followers get the update
+    if p.conversation_id:
+        sys_user = get_or_create_system_user(db)
+        db.add(InboxMessage(
+            user_id=sys_user.id,
+            content=f"Status changed: {old_status} → {new_status}",
+            timestamp=datetime.utcnow(),
+            conversation_id=p.conversation_id
+        ))
+
     db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "from": old_status, "to": new_status}
 
 
 @router.post("/problems/{problem_id}/merge/{dup_id}")
@@ -456,14 +504,90 @@ def merge_duplicate(
     db: Session = Depends(get_db),
     x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
 ):
+    # only triager(s)
     if x_user_email not in TRIAGER_EMAILS:
         raise HTTPException(status_code=403, detail="Not authorized")
+
+    if problem_id == dup_id:
+        raise HTTPException(status_code=400, detail="Cannot merge a problem into itself")
 
     master = db.query(Problem).filter(Problem.id == problem_id).first()
     dup = db.query(Problem).filter(Problem.id == dup_id).first()
     if not master or not dup:
         raise HTTPException(status_code=404, detail="Problem(s) not found")
 
+    # --- transfer votes (dedupe on unique constraint) ---
+    dup_vote_idents = [
+        row[0] for row in db.query(ProblemVote.voter_identity)
+        .filter(ProblemVote.problem_id == dup.id).all()
+    ]
+    for ident in set(dup_vote_idents):
+        exists = db.query(ProblemVote.id).filter(
+            ProblemVote.problem_id == master.id,
+            ProblemVote.voter_identity == ident
+        ).first()
+        if not exists:
+            db.add(ProblemVote(problem_id=master.id, voter_identity=ident))
+
+    # --- transfer follows (dedupe on unique constraint) ---
+    dup_follow_idents = [
+        row[0] for row in db.query(ProblemFollow.identity)
+        .filter(ProblemFollow.problem_id == dup.id).all()
+    ]
+    for ident in set(dup_follow_idents):
+        exists = db.query(ProblemFollow.id).filter(
+            ProblemFollow.problem_id == master.id,
+            ProblemFollow.identity == ident
+        ).first()
+        if not exists:
+            db.add(ProblemFollow(problem_id=master.id, identity=ident))
+
+    # --- recalc counts on master ---
+    master.votes_count = db.query(func.count(ProblemVote.id))\
+        .filter(ProblemVote.problem_id == master.id).scalar() or 0
+    master.followers_count = db.query(func.count(ProblemFollow.id))\
+        .filter(ProblemFollow.problem_id == master.id).scalar() or 0
+    db.add(master)
+
+    # --- move conversation participants from dup -> master ---
+    if dup.conversation_id and master.conversation_id:
+        uids = [
+            row[0] for row in db.query(ConversationUser.user_id)
+            .filter(ConversationUser.conversation_id == dup.conversation_id).all()
+        ]
+        for uid in set(uids):
+            present = db.query(ConversationUser.id).filter(
+                ConversationUser.user_id == uid,
+                ConversationUser.conversation_id == master.conversation_id
+            ).first()
+            if not present:
+                db.add(ConversationUser(user_id=uid, conversation_id=master.conversation_id))
+
+    # --- post system messages in both conversations ---
+    sys_user = get_or_create_system_user(db)
+    if master.conversation_id:
+        db.add(InboxMessage(
+            user_id=sys_user.id,
+            content=f"Merged problem #{dup.id} into this one.",
+            timestamp=datetime.utcnow(),
+            conversation_id=master.conversation_id
+        ))
+    if dup.conversation_id:
+        db.add(InboxMessage(
+            user_id=sys_user.id,
+            content=f"This problem was merged into #{master.id}. Further discussion continues there.",
+            timestamp=datetime.utcnow(),
+            conversation_id=dup.conversation_id
+        ))
+
+    # mark duplicate
     dup.duplicate_of_id = master.id
+    db.add(dup)
+
     db.commit()
-    return {"status": "ok", "merged": dup_id, "into": problem_id}
+    return {
+        "status": "ok",
+        "merged": dup_id,
+        "into": problem_id,
+        "master_counts": {"votes": master.votes_count, "followers": master.followers_count},
+    }
