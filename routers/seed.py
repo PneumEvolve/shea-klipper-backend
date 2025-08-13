@@ -81,7 +81,7 @@ def click_earn(payload: ClickIn, db: Session = Depends(get_db), x_user_email: Op
     if recent:
         raise HTTPException(status_code=409, detail="Already earned for this link recently")
 
-    ev = SeedEvent(identity=ident, event_type="CLICK_EARN", delta=1, ref=payload.ref, metadata=None, created_at=datetime.utcnow())
+    ev = SeedEvent(identity=ident, event_type="CLICK_EARN", delta=1, ref=payload.ref, meta=None, created_at=datetime.utcnow())
     db.add(ev)
     db.commit()
     return {"ok": True, "balance": user_balance(db, ident)}
@@ -133,9 +133,9 @@ def ledger_csv(db: Session = Depends(get_db), x_user_email: Optional[str] = Head
     import io, csv
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["created_at","event_type","delta","ref","metadata_json"])
+    w.writerow(["created_at","event_type","delta","ref","meta_json"])
     for ev in rows:
-        w.writerow([ev.created_at.isoformat(), ev.event_type, ev.delta, ev.ref or "", (ev.metadata or {})])
+        w.writerow([ev.created_at.isoformat(), ev.event_type, ev.delta, ev.ref or "", (ev.meta or {})])
     buf.seek(0)
     return StreamingResponse(buf, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=seed_ledger.csv"})
 
@@ -143,7 +143,7 @@ def ledger_csv(db: Session = Depends(get_db), x_user_email: Optional[str] = Head
 def ledger_json(db: Session = Depends(get_db), x_user_email: Optional[str] = Header(default=None, convert_underscores=True)):
     ident = require_login(x_user_email)
     rows = db.query(SeedEvent).filter(SeedEvent.identity == ident).order_by(SeedEvent.created_at.asc()).all()
-    data = [{"created_at": ev.created_at.isoformat(), "event_type": ev.event_type, "delta": ev.delta, "ref": ev.ref, "metadata": ev.metadata} for ev in rows]
+    data = [{"created_at": ev.created_at.isoformat(), "event_type": ev.event_type, "delta": ev.delta, "ref": ev.ref, "meta": ev.meta} for ev in rows]
     return JSONResponse(data)
 
 class MintIn(BaseModel):

@@ -754,5 +754,5 @@ class SeedEvent(Base):
     event_type = Column(String, nullable=False)
     delta = Column(Integer, nullable=False)
     ref = Column(String, nullable=True)
-    metadata = Column(JSON, nullable=True)                  # from sqlalchemy import JSON
+    meta = Column("metadata", JSON, nullable=True)                # from sqlalchemy import JSON
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
