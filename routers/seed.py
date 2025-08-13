@@ -33,6 +33,20 @@ def user_balance(db: Session, identity: str) -> int:
     total = db.query(func.coalesce(func.sum(SeedEvent.delta), 0)).filter(SeedEvent.identity == identity).scalar()
     return int(total or 0)
 
+def has_event_today(db: Session, identity: str, event_type: str) -> bool:
+    start, end = today_utc_range()
+    q = (
+        db.query(SeedEvent.id)
+        .filter(
+            SeedEvent.identity == identity,
+            SeedEvent.event_type == event_type,
+            SeedEvent.created_at >= start,
+            SeedEvent.created_at < end,
+        )
+        .first()
+    )
+    return q is not None
+
 # ------------ schemas ------------
 class ClickIn(BaseModel):
     ref: str = Field(..., min_length=1, max_length=200)     # your link id (not the raw URL)
@@ -155,3 +169,53 @@ def mint_deposit(payload: MintIn, db: Session = Depends(get_db), x_user_email: O
     # mock mode: just acknowledge; do NOT credit or debit yet
     ident = require_login(x_user_email)
     return {"ok": False, "mode": "mock", "message": "On-chain deposit coming soon. Connect wallet next."}
+
+@router.post("/reward/journal")
+def reward_journal(
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
+    ident = require_login(x_user_email)
+    EVENT = "JOURNAL_DAILY"
+    AMOUNT = 5
+
+    if has_event_today(db, ident, EVENT):
+        # already rewarded today – no error, just report status
+        return {"ok": True, "claimed": False, "message": "Already rewarded today"}
+
+    ev = SeedEvent(
+        identity=ident,
+        event_type=EVENT,
+        delta=AMOUNT,
+        ref=None,
+        meta={"source": "journal"},
+        created_at=datetime.utcnow(),
+    )
+    db.add(ev)
+    db.commit()
+    return {"ok": True, "claimed": True, "balance": user_balance(db, ident)}
+
+@router.get("/daily")
+def get_daily_status(
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
+    ident = require_login(x_user_email)
+    start, end = today_utc_range()
+
+    journal_done = has_event_today(db, ident, "JOURNAL_DAILY")
+    earned_today = (
+        db.query(func.coalesce(func.sum(SeedEvent.delta), 0))
+        .filter(
+            SeedEvent.identity == ident,
+            SeedEvent.created_at >= start,
+            SeedEvent.created_at < end,
+        )
+        .scalar()
+        or 0
+    )
+    return {
+        "journal_done_today": bool(journal_done),
+        "earned_today": int(earned_today),
+        "daily_cap": DAILY_EARN_CAP,  # for UI hints
+    }
