@@ -21,6 +21,9 @@ ALLOWED_STATUSES = {
   "Open","Triaged","In Discovery","In Design","In Experiment","In Rollout","Solved","Archived"
 }
 
+# Allowed statuses for solutions
+ALLOWED_SOLUTION_STATUSES = {"Proposed", "In Trial", "Implementing", "Accepted", "Rejected", "Archived"}
+
 
 # ---------- helpers ----------
 
@@ -144,6 +147,131 @@ def recency_boost(created_at: datetime) -> float:
         return 0.5
     return 0.0
 
+def ensure_solution_conversation(db: Session, solution, creator_email: Optional[str]):
+    if solution.conversation_id:
+        convo = db.query(Conversation).filter(Conversation.id == solution.conversation_id).first()
+        if convo:
+            return convo
+
+    name = f"solution:{solution.id}:{slugify(solution.title)}"
+    convo = Conversation(name=name)
+    db.add(convo)
+    db.flush()
+
+    sys_user = get_or_create_system_user(db)
+    db.add(ConversationUser(user_id=sys_user.id, conversation_id=convo.id))
+
+    if creator_email and not (creator_email or "").startswith("anon:"):
+        user = db.query(User).filter(User.email == creator_email).first()
+        if user:
+            db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
+
+    # seed message in the solution convo
+    db.add(InboxMessage(
+        user_id=sys_user.id,
+        content=f"New solution proposed: “{solution.title}”",
+        timestamp=datetime.utcnow(),
+        conversation_id=convo.id
+    ))
+
+    db.commit()
+    db.refresh(convo)
+
+    solution.conversation_id = convo.id
+    db.commit()
+    db.refresh(solution)
+    return convo
+
+
+def annotate_solution_flags_for_identity(db: Session, identity: Optional[str], solutions):
+    if not identity or not solutions:
+        for s in solutions:
+            s.has_voted = False
+            s.is_following = False
+        return solutions
+
+    ids = [s.id for s in solutions]
+    from models import SolutionVote, SolutionFollow  # if not already imported at top
+
+    v_ids = db.query(SolutionVote.solution_id).filter(
+        SolutionVote.solution_id.in_(ids),
+        SolutionVote.voter_identity == identity
+    ).all()
+    f_ids = db.query(SolutionFollow.solution_id).filter(
+        SolutionFollow.solution_id.in_(ids),
+        SolutionFollow.identity == identity
+    ).all()
+
+    voted = {i for (i,) in v_ids}
+    followed = {i for (i,) in f_ids}
+
+    for s in solutions:
+        s.has_voted = s.id in voted
+        s.is_following = s.id in followed
+
+    return solutions
+
+def toggle_solution_vote(db: Session, solution_id: int, identity: str, commit: bool = False) -> bool:
+    from models import Solution, SolutionVote
+
+    s = db.query(Solution).filter(Solution.id == solution_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+
+    v = db.query(SolutionVote).filter(
+        SolutionVote.solution_id == solution_id,
+        SolutionVote.voter_identity == identity
+    ).first()
+
+    if v:
+        db.delete(v)
+        s.votes_count = max(0, (s.votes_count or 0) - 1)
+        changed_to = False
+    else:
+        db.add(SolutionVote(solution_id=solution_id, voter_identity=identity))
+        s.votes_count = (s.votes_count or 0) + 1
+        changed_to = True
+
+    if commit:
+        db.commit()
+    return changed_to
+
+
+def toggle_solution_follow(db: Session, solution_id: int, identity: str, commit: bool = False) -> bool:
+    from models import Solution, SolutionFollow
+
+    s = db.query(Solution).filter(Solution.id == solution_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+
+    f = db.query(SolutionFollow).filter(
+        SolutionFollow.solution_id == solution_id,
+        SolutionFollow.identity == identity
+    ).first()
+
+    if f:
+        db.delete(f)
+        s.followers_count = max(0, (s.followers_count or 0) - 1)
+        changed_to = False
+    else:
+        db.add(SolutionFollow(solution_id=solution_id, identity=identity))
+        s.followers_count = (s.followers_count or 0) + 1
+        changed_to = True
+
+        # add real users to the solution conversation
+        if not identity.startswith("anon:") and s.conversation_id:
+            user = db.query(User).filter(User.email == identity).first()
+            if user:
+                is_member = db.query(ConversationUser).filter(
+                    ConversationUser.user_id == user.id,
+                    ConversationUser.conversation_id == s.conversation_id
+                ).first()
+                if not is_member:
+                    db.add(ConversationUser(user_id=user.id, conversation_id=s.conversation_id))
+
+    if commit:
+        db.commit()
+    return changed_to
 
 # ---------- schemas ----------
 
@@ -173,6 +301,9 @@ class ProblemOut(BaseModel):
     has_voted: bool = False
     is_following: bool = False
     created_by_email: Optional[str] = None
+    duplicate_of_id: Optional[int] = None
+    accepted_solution_id: Optional[int] = None         # NEW
+    solved_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True  # Pydantic v2; use orm_mode=True for v1
@@ -184,6 +315,31 @@ class ProblemCreateIn(BaseModel):
     scope: str = Field("Systemic", pattern="^(Personal|Community|Systemic)$")
     severity: int = Field(3, ge=1, le=5)
     anonymous: bool = False
+
+class SolutionCreateIn(BaseModel):
+    title: str = Field(..., min_length=5, max_length=200)
+    description: str = Field(..., min_length=50, max_length=10000)
+    anonymous: bool = False
+
+
+class SolutionOut(BaseModel):
+    id: int
+    problem_id: int
+    title: str
+    description: str
+    status: str
+    votes_count: int = 0
+    followers_count: int = 0
+    created_at: datetime
+    conversation_id: Optional[int] = None
+    created_by_email: Optional[str] = None
+    # flags
+    has_voted: bool = False
+    is_following: bool = False
+
+    class Config:
+        from_attributes = True
+
 
 # ---------- toggle helpers used by routes ----------
 
@@ -595,3 +751,251 @@ def merge_duplicate(
         "into": problem_id,
         "master_counts": {"votes": master.votes_count, "followers": master.followers_count},
     }
+
+
+# --- SOLUTIONS ---
+
+@router.post("/problems/{problem_id}/solutions", response_model=SolutionOut)
+def create_solution(
+    problem_id: int,
+    payload: SolutionCreateIn,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
+    from models import Solution
+
+    identity = get_identity_email(x_user_email)
+    created_by = None if payload.anonymous or identity.startswith("anon:") else identity
+
+    # ensure problem exists
+    p = db.query(Problem).filter(Problem.id == problem_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Problem not found")
+
+    # (optional) require login to propose solutions
+    if identity.startswith("anon:"):
+        raise HTTPException(status_code=401, detail="Login required to propose a solution")
+
+    s = Solution(
+        problem_id=p.id,
+        title=payload.title.strip(),
+        description=payload.description.strip(),
+        status="Proposed",
+        anonymous=bool(payload.anonymous),
+        created_by_email=created_by,
+        created_at=datetime.utcnow(),
+    )
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+
+    # conversation + participants
+    ensure_solution_conversation(db, s, creator_email=created_by)
+
+    # auto-vote & follow by submitter
+    _ = toggle_solution_vote(db, s.id, identity, commit=True)
+    _ = toggle_solution_follow(db, s.id, identity, commit=True)
+
+    # announce into the problem conversation
+    if p.conversation_id:
+        sys = get_or_create_system_user(db)
+        db.add(InboxMessage(
+            user_id=sys.id,
+            content=f"New solution proposed for this problem: “{s.title}”",
+            timestamp=datetime.utcnow(),
+            conversation_id=p.conversation_id
+        ))
+        db.commit()
+
+    s.has_voted = True
+    s.is_following = True
+    return s
+
+
+@router.get("/problems/{problem_id}/solutions", response_model=List[SolutionOut])
+def list_solutions_for_problem(
+    problem_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+    sort: Optional[str] = "trending",     # 'trending' | 'votes' | 'new'
+):
+    from models import Solution
+
+    # ensure problem exists
+    if not db.query(Problem.id).filter(Problem.id == problem_id).first():
+        raise HTTPException(status_code=404, detail="Problem not found")
+
+    solutions = db.query(Solution).filter(Solution.problem_id == problem_id).all()
+
+    # flags
+    annotate_solution_flags_for_identity(db, x_user_email, solutions)
+
+    # sort
+    import math
+    def recency(created_at: datetime) -> float:
+        delta = datetime.utcnow() - created_at
+        if delta.days < 7: return 1.0
+        if delta.days < 30: return 0.5
+        return 0.0
+
+    def score(s):
+        return math.log((s.votes_count or 0) + 1) + 0.5 * recency(s.created_at)
+
+    if sort == "votes":
+        solutions.sort(key=lambda s: ((s.votes_count or 0), s.created_at), reverse=True)
+    elif sort == "new":
+        solutions.sort(key=lambda s: s.created_at, reverse=True)
+    else:
+        solutions.sort(key=lambda s: (score(s), s.created_at), reverse=True)
+
+    # pin accepted solution on top if present
+    prob = db.query(Problem).filter(Problem.id == problem_id).first()
+    if prob and prob.accepted_solution_id:
+        solutions.sort(key=lambda s: (s.id == prob.accepted_solution_id, ), reverse=True)
+
+    return solutions
+
+
+@router.get("/solutions/{solution_id}", response_model=SolutionOut)
+def get_solution(
+    solution_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
+    from models import Solution
+    s = db.query(Solution).filter(Solution.id == solution_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+
+    ensure_solution_conversation(db, s, creator_email=s.created_by_email)
+
+    # flags
+    if x_user_email:
+        from models import SolutionVote, SolutionFollow
+        s.has_voted = db.query(SolutionVote.id).filter(
+            SolutionVote.solution_id == s.id,
+            SolutionVote.voter_identity == x_user_email
+        ).first() is not None
+        s.is_following = db.query(SolutionFollow.id).filter(
+            SolutionFollow.solution_id == s.id,
+            SolutionFollow.identity == x_user_email
+        ).first() is not None
+    else:
+        s.has_voted = False
+        s.is_following = False
+
+    return s
+
+
+@router.post("/solutions/{solution_id}/vote")
+def vote_solution(
+    solution_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
+    identity = get_identity_email(x_user_email)
+    changed = toggle_solution_vote(db, solution_id, identity, commit=True)
+    return {"status": "ok", "voted": changed}
+
+
+@router.post("/solutions/{solution_id}/follow")
+def follow_solution(
+    solution_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
+    identity = get_identity_email(x_user_email)
+    if identity.startswith("anon:"):
+        raise HTTPException(status_code=401, detail="Login required to follow")
+    changed = toggle_solution_follow(db, solution_id, identity, commit=True)
+    return {"status": "ok", "following": changed}
+
+
+class SolutionStatusIn(BaseModel):
+    status: str
+
+@router.post("/solutions/{solution_id}/status")
+def update_solution_status(
+    solution_id: int,
+    payload: SolutionStatusIn,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
+    if x_user_email not in TRIAGER_EMAILS:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    from models import Solution
+    s = db.query(Solution).filter(Solution.id == solution_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Solution not found")
+
+    new_status = (payload.status or "").strip()
+    if new_status not in ALLOWED_SOLUTION_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+
+    old = s.status
+    if old == new_status:
+        return {"status": "ok", "from": old, "to": new_status}
+
+    s.status = new_status
+    db.add(s)
+
+    # announce in its conversation
+    if s.conversation_id:
+        sys = get_or_create_system_user(db)
+        db.add(InboxMessage(
+            user_id=sys.id,
+            content=f"Solution status changed: {old} → {new_status}",
+            timestamp=datetime.utcnow(),
+            conversation_id=s.conversation_id
+        ))
+
+    db.commit()
+    return {"status": "ok", "from": old, "to": new_status}
+
+@router.post("/problems/{problem_id}/accept/{solution_id}")
+def accept_solution(
+    problem_id: int,
+    solution_id: int,
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+):
+    if x_user_email not in TRIAGER_EMAILS:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    from models import Solution
+    p = db.query(Problem).filter(Problem.id == problem_id).first()
+    s = db.query(Solution).filter(Solution.id == solution_id, Solution.problem_id == problem_id).first()
+
+    if not p or not s:
+        raise HTTPException(status_code=404, detail="Problem or Solution not found")
+
+    # update problem
+    p.accepted_solution_id = s.id
+    p.solved_at = datetime.utcnow()
+    p.status = "Solved"
+    db.add(p)
+
+    # mark solution accepted
+    s.status = "Accepted"
+    db.add(s)
+
+    # system messages to both convos
+    sys = get_or_create_system_user(db)
+    if p.conversation_id:
+        db.add(InboxMessage(
+            user_id=sys.id,
+            content=f"✅ Accepted solution “{s.title}”. Problem marked Solved.",
+            timestamp=datetime.utcnow(),
+            conversation_id=p.conversation_id
+        ))
+    if s.conversation_id:
+        db.add(InboxMessage(
+            user_id=sys.id,
+            content=f"✅ This solution was accepted for Problem #{p.id}.",
+            timestamp=datetime.utcnow(),
+            conversation_id=s.conversation_id
+        ))
+
+    db.commit()
+    return {"status": "ok", "accepted_solution_id": s.id}

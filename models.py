@@ -640,6 +640,9 @@ class Problem(Base):
     created_by_email = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
+    accepted_solution_id = Column(Integer, ForeignKey("solutions.id"), nullable=True)
+    solved_at = Column(DateTime, nullable=True)
+
     duplicate_of_id = Column(Integer, ForeignKey("problems.id"), nullable=True)
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True)
 
@@ -649,7 +652,8 @@ class Problem(Base):
     # relationships
     duplicates = relationship("Problem", remote_side=[id])
     conversation = relationship("Conversation")
-
+    accepted_solution = relationship("Solution", foreign_keys=[accepted_solution_id], uselist=False)
+    
 class ProblemVote(Base):
     __tablename__ = "problem_votes"
 
@@ -672,4 +676,50 @@ class ProblemFollow(Base):
 
     __table_args__ = (
         UniqueConstraint("problem_id", "identity", name="uq_problem_follow_one"),
+    )
+
+class Solution(Base):
+    __tablename__ = "solutions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), index=True, nullable=False)
+    title = Column(String, nullable=False, index=True)
+    description = Column(Text, nullable=False)
+    status = Column(String, default="Proposed", index=True)  # Proposed | In Trial | Implementing | Accepted | Rejected | Archived
+    anonymous = Column(Boolean, default=False)
+    created_by_email = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    votes_count = Column(Integer, default=0, nullable=False)
+    followers_count = Column(Integer, default=0, nullable=False)
+
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True)
+
+    problem = relationship("Problem")
+    conversation = relationship("Conversation")
+
+
+class SolutionVote(Base):
+    __tablename__ = "solution_votes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    solution_id = Column(Integer, ForeignKey("solutions.id", ondelete="CASCADE"), index=True, nullable=False)
+    voter_identity = Column(String, index=True, nullable=False)  # email OR "anon:{uuid}"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("solution_id", "voter_identity", name="uq_solution_vote_one"),
+    )
+
+
+class SolutionFollow(Base):
+    __tablename__ = "solution_follows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    solution_id = Column(Integer, ForeignKey("solutions.id", ondelete="CASCADE"), index=True, nullable=False)
+    identity = Column(String, index=True, nullable=False)  # email OR "anon:{uuid}"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("solution_id", "identity", name="uq_solution_follow_one"),
     )
