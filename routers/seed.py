@@ -12,6 +12,25 @@ from models import SeedEvent
 
 router = APIRouter(prefix="/seed", tags=["seed"])
 
+# who can view raw identities in global exports
+ADMINS = {"sheaklipper@gmail.com"}
+
+def is_admin(email: str | None) -> bool:
+    return bool(email and email in ADMINS)
+
+def mask_identity(identity: str) -> str:
+    # anon stays as-is; emails are partially masked: ab***@domain.com
+    if not identity:
+        return ""
+    if identity.startswith("anon:"):
+        return identity
+    if "@" in identity:
+        local, domain = identity.split("@", 1)
+        head = local[:2] if len(local) >= 2 else local[:1]
+        return f"{head}***@{domain}"
+    # any other style (future-proof)
+    return identity[:3] + "***"
+
 # ------------ config knobs ------------
 DAILY_EARN_CAP = 30                 # max points per user per UTC day
 PER_LINK_COOLDOWN_HOURS = 24        # earn once per link per 24h
@@ -158,6 +177,77 @@ def ledger_json(db: Session = Depends(get_db), x_user_email: Optional[str] = Hea
     ident = require_login(x_user_email)
     rows = db.query(SeedEvent).filter(SeedEvent.identity == ident).order_by(SeedEvent.created_at.asc()).all()
     data = [{"created_at": ev.created_at.isoformat(), "event_type": ev.event_type, "delta": ev.delta, "ref": ev.ref, "meta": ev.meta} for ev in rows]
+    return JSONResponse(data)
+
+@router.get("/ledger/global")
+def ledger_global(
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+    limit: int = Query(200, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+    raw: int = Query(0, ge=0, le=1),  # admins may set raw=1 to see real identities
+):
+    rows = (
+        db.query(SeedEvent)
+        .order_by(SeedEvent.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    show_raw = bool(raw and is_admin(x_user_email))
+    out = []
+    for ev in rows:
+        out.append({
+            "created_at": ev.created_at.isoformat(),
+            "identity": ev.identity if show_raw else mask_identity(ev.identity),
+            "event_type": ev.event_type,
+            "delta": ev.delta,
+            "ref": ev.ref,
+            # no balance_after here; global balances don't make sense
+        })
+    return JSONResponse(out)
+
+
+@router.get("/ledger.global.csv")
+def ledger_global_csv(
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+    raw: int = Query(0, ge=0, le=1),
+):
+    rows = db.query(SeedEvent).order_by(SeedEvent.created_at.asc()).all()
+    show_raw = bool(raw and is_admin(x_user_email))
+
+    import io, csv
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["created_at","identity","event_type","delta","ref","meta_json"])
+    for ev in rows:
+        ident = ev.identity if show_raw else mask_identity(ev.identity)
+        w.writerow([ev.created_at.isoformat(), ident, ev.event_type, ev.delta, ev.ref or "", (ev.meta or {})])
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=seed_ledger_global.csv"},
+    )
+
+
+@router.get("/ledger.global.json")
+def ledger_global_json(
+    db: Session = Depends(get_db),
+    x_user_email: Optional[str] = Header(default=None, convert_underscores=True),
+    raw: int = Query(0, ge=0, le=1),
+):
+    rows = db.query(SeedEvent).order_by(SeedEvent.created_at.asc()).all()
+    show_raw = bool(raw and is_admin(x_user_email))
+    data = [{
+        "created_at": ev.created_at.isoformat(),
+        "identity": ev.identity if show_raw else mask_identity(ev.identity),
+        "event_type": ev.event_type,
+        "delta": ev.delta,
+        "ref": ev.ref,
+        "meta": ev.meta,
+    } for ev in rows]
     return JSONResponse(data)
 
 class MintIn(BaseModel):
