@@ -24,6 +24,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Local imports
 from database import SessionLocal
 from models import WeDreamEntry, DreamMachineOutput
+from routers import seed as seed_router
 from routers import (
     auth,
     transcriptions,
@@ -148,3 +149,4 @@ app.include_router(inbox.router)
 app.include_router(living_plan.router)
 app.include_router(problems.router)
 app.include_router(forge.router)
+app.include_router(seed_router.router)

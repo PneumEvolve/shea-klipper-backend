@@ -745,3 +745,14 @@ class SolutionFollow(Base):
     __table_args__ = (
         UniqueConstraint("solution_id", "identity", name="uq_solution_follow_one"),
     )
+
+class SeedEvent(Base):
+    __tablename__ = "seed_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    identity = Column(String, nullable=False, index=True)   # login email
+    event_type = Column(String, nullable=False)
+    delta = Column(Integer, nullable=False)
+    ref = Column(String, nullable=True)
+    metadata = Column(JSON, nullable=True)                  # from sqlalchemy import JSON
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
