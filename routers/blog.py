@@ -2,14 +2,56 @@ from fastapi import APIRouter, Depends, HTTPException, status, Path
 from sqlalchemy.orm import Session
 from typing import List
 from database import get_db
-from models import BlogPost, BlogComment, User
+from datetime import datetime
+from models import BlogPost, BlogComment, User, InboxMessage
 from schemas import BlogPostCreate, BlogPostOut, BlogCommentCreate, BlogCommentOut
 from routers.auth import get_current_user_dependency  # Assuming you already use this
+from routers.inbox import (
+    get_or_create_system_user,
+    get_or_create_system_conversation_for_user,
+    get_or_create_user_by_email_or_create,
+    ADMIN_EMAIL,
+)
 
 router = APIRouter(
     prefix="/blog",
     tags=["Blog"]
 )
+
+def notify_admin_of_blog_comment(db: Session, comment: BlogComment):
+    # Ensure System user + Admin user + Admin's system convo
+    system_user = get_or_create_system_user(db)
+    admin_user = get_or_create_user_by_email_or_create(db, ADMIN_EMAIL, username="Admin")
+    convo = get_or_create_system_conversation_for_user(db, admin_user, system_user)
+
+    # Fetch post title and a safe author display (no public emails)
+    post = db.query(BlogPost).filter(BlogPost.id == comment.post_id).first()
+    post_title = (post.title if post else None) or f"Post #{comment.post_id}"
+
+    author = db.query(User).filter(User.id == comment.user_id).first() if comment.user_id else None
+    author_display = (author.username if (author and author.username) else (f"User {author.id}" if author else "Anonymous"))
+
+    # Build message
+    lines = [
+        "🗨️ New blog comment",
+        f"• Post: {post_title} (#{comment.post_id})",
+        f"• Author: {author_display}",
+        "",
+        comment.content.strip(),
+        "",
+        f"Open: /blog/{comment.post_id}",
+    ]
+    content = "\n".join(lines)
+
+    # Drop it into Admin's system convo FROM System
+    msg = InboxMessage(
+        user_id=system_user.id,
+        conversation_id=convo.id,
+        content=content,
+        timestamp=datetime.utcnow(),
+    )
+    db.add(msg)
+    db.commit()
 
 # ✅ Get all blog posts
 @router.get("/", response_model=List[BlogPostOut])
@@ -96,6 +138,14 @@ def add_comment(
     db.add(new_comment)
     db.commit()
     db.refresh(new_comment)
+
+    # 🔔 Notify Admin via System DM
+    try:
+        notify_admin_of_blog_comment(db, new_comment)
+    except Exception as e:
+        # Keep user flow resilient; log instead of failing the request
+        print("Failed to notify admin of blog comment:", e)
+
     return new_comment
 
 # ✅ Get comments for a blog post
