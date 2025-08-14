@@ -27,24 +27,19 @@ from models import WeDreamEntry, DreamMachineOutput
 from routers import seed as seed_router
 from routers import (
     auth,
-    transcriptions,
-    summarization,
     meal_planning,
     grocery_list,
     payments,
     visitors_flame,
-    ramblings,
     journal,
     forum,
     we_dream,
-    nodes,
     garden,
     volunteers,
     blog,
     projects,
     community,
     farmgame,
-    lyra,
     inbox,
     living_plan,
     problems,
@@ -127,24 +122,19 @@ app.add_middleware(
 
 # -------------------- Routers -------------------- #
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
-app.include_router(transcriptions.router, prefix="/transcriptions", tags=["Transcriptions"])
-app.include_router(summarization.router, prefix="/summarization", tags=["Summarization"])
 app.include_router(meal_planning.router, prefix="/meal-planning", tags=["Meal Planning"])
 app.include_router(grocery_list.router, prefix="/grocery-list", tags=["Grocery List"])
 app.include_router(payments.router, prefix="/payments", tags=["Payments"])
 app.include_router(visitors_flame.router)
-app.include_router(ramblings.router)
 app.include_router(journal.router)
 app.include_router(forum.router, prefix="/forum", tags=["Forum"])
 app.include_router(we_dream.router, prefix="/we-dream")
-app.include_router(nodes.router, prefix="/nodes")
 app.include_router(garden.router)
 app.include_router(volunteers.router)
 app.include_router(blog.router)
 app.include_router(projects.router)
 app.include_router(community.router)
 app.include_router(farmgame.router)
-app.include_router(lyra.router)
 app.include_router(inbox.router)
 app.include_router(living_plan.router)
 app.include_router(problems.router)
