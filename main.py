@@ -29,7 +29,6 @@ from routers import (
     auth,
     meal_planning,
     grocery_list,
-    payments,
     visitors_flame,
     journal,
     forum,
@@ -124,7 +123,6 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(meal_planning.router, prefix="/meal-planning", tags=["Meal Planning"])
 app.include_router(grocery_list.router, prefix="/grocery-list", tags=["Grocery List"])
-app.include_router(payments.router, prefix="/payments", tags=["Payments"])
 app.include_router(visitors_flame.router)
 app.include_router(journal.router)
 app.include_router(forum.router, prefix="/forum", tags=["Forum"])
