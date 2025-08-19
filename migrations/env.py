@@ -1,57 +1,76 @@
 import os
 import sys
 from logging.config import fileConfig
-from sqlalchemy import create_engine, pool
+
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 from dotenv import load_dotenv
 
-# Load .env file manually
+# Load .env and make your app importable
 load_dotenv()
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Add your app directory to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Logging config
+# Alembic config / logging
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Import your metadata
-from models import Base
-import models
+# pull the multi-dir setting from alembic.ini
+version_locations = config.get_main_option("version_locations")
+if version_locations:
+    version_locations = [p.strip() for p in version_locations.split()]
+else:
+    version_locations = None
 
-# Pull DB URL from env
-DATABASE_URL = os.environ.get("DATABASE_URL")
-print("Using database:", DATABASE_URL)
-if not DATABASE_URL:
-    raise Exception("DATABASE_URL not set. Check your .env file.")
 
-# Set target metadata
+# Import your models + metadata
+from models import Base  # adjust import if your Base lives elsewhere
+import models  # keep for side-effects if needed
+
 target_metadata = Base.metadata
 
-# ---- Offline mode
-def run_migrations_offline():
+# Prefer DATABASE_URL env var; fallback to alembic.ini
+env_url = os.getenv("DATABASE_URL")
+if env_url:
+    config.set_main_option("sqlalchemy.url", env_url)
+
+def _configure_offline():
+    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=DATABASE_URL,
+        url=url,
         target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_locations=version_locations,
     )
+
+def _configure_online(connection):
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+        version_locations=version_locations,
+    )
+
+def run_migrations_offline():
+    _configure_offline()
     with context.begin_transaction():
         context.run_migrations()
 
-# ---- Online mode
 def run_migrations_online():
-    engine = create_engine(DATABASE_URL, poolclass=pool.NullPool)
-    with engine.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-        )
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        _configure_online(connection)
         with context.begin_transaction():
             context.run_migrations()
 
-# ---- Execute appropriate path
 if context.is_offline_mode():
     run_migrations_offline()
 else:

@@ -31,7 +31,7 @@ class ForgeIdeaNoteBase(BaseModel):
     content: str
 
     class Config:
-        orm_mode = True  # Ensure Pydantic models can handle SQLAlchemy models
+        from_attributes = True  # Ensure Pydantic models can handle SQLAlchemy models
 
 
 class ForgeIdeaNoteCreate(ForgeIdeaNoteBase):
@@ -43,7 +43,7 @@ class ForgeIdeaNote(ForgeIdeaNoteBase):
     idea_id: int
 
     class Config:
-        orm_mode = True  # Enable ORM mode to handle SQLAlchemy model
+        from_attributes = True  # Enable ORM mode to handle SQLAlchemy model ORM Mode renamed from_attributes
 
 class IdeaStatus(str, Enum):
     Proposed = "Proposed"

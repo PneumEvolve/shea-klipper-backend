@@ -61,7 +61,7 @@ class User(BaseModel):
     email: EmailStr
 
     class Config:
-        from_attributes = True  # or orm_mode = True if you're using Pydantic v1
+        from_attributes = True  # or from_attributes = True if you're using Pydantic v1
 
 class JournalEntryCreate(BaseModel):
     title: str
@@ -154,7 +154,7 @@ class VolunteerRequestResponse(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class VolunteerRequestUpdate(BaseModel):
     status: str
@@ -202,7 +202,7 @@ class ProjectTask(ProjectTaskBase):
     id: UUID
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ProjectBase(BaseModel):
     name: str
@@ -217,7 +217,7 @@ class Project(ProjectBase):
     tasks: List[ProjectTask]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
     
 class CommunityCreate(BaseModel):
     name: str
@@ -231,7 +231,7 @@ class CommunityMemberOut(BaseModel):
     is_admin: bool
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CommunityOut(BaseModel):
     id: int
@@ -244,8 +244,8 @@ class CommunityOut(BaseModel):
     members: List[CommunityMemberOut]
 
     class Config:
-        orm_mode = True
-        allow_population_by_field_name = True
+        from_attributes = True
+        populate_by_name = True
 
 
 
@@ -281,7 +281,7 @@ class CommunityProjectResponse(CommunityProjectBase):
     creator_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CommunityProjectTaskBase(BaseModel):
@@ -295,7 +295,7 @@ class UserSimple(BaseModel):
     username: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CommunityProjectTaskResponse(CommunityProjectTaskBase):
     id: int
@@ -309,7 +309,7 @@ class CommunityProjectTaskResponse(CommunityProjectTaskBase):
     completed_by: Optional[UserSimple] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class TaskUpdate(BaseModel):
     content: Optional[str] = None
@@ -330,7 +330,7 @@ class ChatMessage(ChatMessageBase):
     timestamp: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CommunityMemberWithUserOut(BaseModel):
     user_id: int
@@ -341,7 +341,7 @@ class CommunityMemberWithUserOut(BaseModel):
     user: UserResponse  # <-- nested user info
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # schemas/resource.py
 
@@ -362,7 +362,7 @@ class ResourceOut(ResourceBase):
     community_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CommunityEventBase(BaseModel):
     title: str
@@ -381,7 +381,7 @@ class CommunityEventOut(CommunityEventBase):
     community_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # schemas/farmgame.py
@@ -397,7 +397,7 @@ class FarmGameStateResponse(FarmGameStateBase):
     user_id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 # schemas/LivingPlan.py
@@ -409,4 +409,4 @@ class LivingPlanSectionSchema(BaseModel):
     notes: str = ""
 
     class Config:
-        orm_mode = True
+        from_attributes = True

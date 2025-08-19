@@ -8,22 +8,21 @@ from database import get_db
 from models import User
 from pydantic import BaseModel, EmailStr
 import requests
-from dotenv import load_dotenv
 import os
-from pathlib import Path
 from typing import Optional, Tuple, Deque, Dict
 from utils.email import send_email
 from schemas import UserResponse, UserCreate, ProfilePicUpdate
 from models import Category, user_categories, User
-from sqlalchemy import text
+from sqlalchemy import text, func
+from sqlalchemy.exc import IntegrityError
 from database import get_db
 from schemas import UsernameUpdate
 from jose import JWTError
 import time
 from collections import deque
+from settings import settings as app_settings
 
-env_path = Path(__file__).parent / ".env"
-load_dotenv(dotenv_path=env_path)
+
 router = APIRouter()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -35,8 +34,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-router = APIRouter()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # failure tracking: key = (ip, email_lower)
@@ -113,44 +111,102 @@ def verify_recaptcha(token: str) -> bool:
     result = response.json()
     return result.get("success", False)
 
+def _is_prod_env() -> bool:
+    env = str(getattr(app_settings, "ENV", "")).lower()
+    return env in ("prod", "production")
 
-@router.post("/signup")
+def set_http_only_cookie(response: Response, *, key: str, value: str, max_age: int) -> None:
+    prod = _is_prod_env()
+    response.set_cookie(
+        key=key,
+        value=value,
+        httponly=True,
+        secure=prod,                   # ✅ dev=False (HTTP), prod=True (HTTPS)
+        samesite="None" if prod else "Lax",
+        path="/",
+        max_age=max_age,
+    )
+
+def clear_cookie(response: Response, key: str) -> None:
+    response.delete_cookie(key, path="/")
+
+
+
+@router.post("/signup", response_model=UserResponse)
 def signup(user_data: UserCreate, db: Session = Depends(get_db)):
-    if not verify_recaptcha(user_data.recaptcha_token):
-        raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
-    
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    hashed_password = hash_password(user_data.password)
-    new_user = User(email=user_data.email, hashed_password=hashed_password)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    email = (user_data.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email required")
+    if not user_data.password or len(user_data.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
-    default_categories = {
-        "food": ["Pantry", "Fridge", "Freezer"],
-        "recipe": ["Breakfast", "Lunch", "Dinner"]
-    }
+    # Skip captcha in dev
+    if app_settings.ENV != "dev":
+        if not verify_recaptcha(user_data.recaptcha_token):
+            raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
 
-    for category_type, names in default_categories.items():
-        for name in names:
-            category = db.query(Category).filter_by(name=name, type=category_type).first()
-            if not category:
-                category = Category(name=name, type=category_type)
-                db.add(category)
-                db.commit()
-                db.refresh(category)
+    # ---------- Phase 1: create user (isolated) ----------
+    try:
+        existing = db.query(User).filter(User.email == email).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered")
 
-            exists = db.execute(
-                text("SELECT 1 FROM user_categories WHERE user_id = :user_id AND category_id = :category_id"),
-                {"user_id": new_user.id, "category_id": category.id}
-            ).first()
+        new_user = User(
+            email=email,
+            username=email.split("@")[0],
+            hashed_password=hash_password(user_data.password),
+        )
+        db.add(new_user)
+        db.commit()      # commit just the user
+        db.refresh(new_user)
 
-            if not exists:
-                db.execute(user_categories.insert().values(user_id=new_user.id, category_id=category.id))
-                db.commit()
+    except IntegrityError as ie:
+        db.rollback()
+        msg = str(ie.orig).lower()
+        # Only translate if it’s clearly the user email constraint
+        if "users" in msg and "email" in msg and "unique" in msg:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        # Otherwise surface a generic 500 to stop the wild goose chase
+        raise HTTPException(status_code=500, detail="Could not create user (DB constraint)")
+
+    # ---------- Phase 2: seed defaults (best effort) ----------
+    try:
+        default_categories = {
+            "food": ["Pantry", "Fridge", "Freezer"],
+            "recipe": ["Breakfast", "Lunch", "Dinner"],
+        }
+
+        for category_type, names in default_categories.items():
+            # get existing
+            existing_cats = {
+                (c.name, c.type): c
+                for c in db.query(Category)
+                           .filter(Category.type == category_type, Category.name.in_(names))
+                           .all()
+            }
+            for name in names:
+                key = (name, category_type)
+                if key not in existing_cats:
+                    c = Category(name=name, type=category_type)
+                    db.add(c)
+                    db.flush()
+                    existing_cats[key] = c
+
+                # link (ignore if already present)
+                db.execute(
+                    text("""
+                        INSERT INTO user_categories (user_id, category_id)
+                        VALUES (:uid, :cid)
+                        ON CONFLICT DO NOTHING
+                    """),
+                    {"uid": new_user.id, "cid": existing_cats[key].id},
+                )
+        db.commit()
+    except Exception as e:
+        # Don’t fail the signup if seeding is noisy
+        db.rollback()
+        # Log server-side; return success anyway
+        print("[signup] category seeding failed:", repr(e))
 
     return UserResponse(id=new_user.id, email=new_user.email)
 
@@ -183,19 +239,25 @@ async def login(
     # Success — clear failures/challenge
     clear_failures(ip, email)
 
+     # Mint tokens
     access_token = create_access_token({"sub": user.email, "id": user.id})
     refresh_token = create_refresh_token({"sub": user.email, "id": user.id})
 
-    is_localhost = "localhost" in str(request.base_url)
-    response.set_cookie(
+    # 🔐 Set cookies (dev-safe / prod-safe)
+    set_http_only_cookie(
+        response,
         key="refresh_token",
         value=refresh_token,
-        httponly=True,
-        samesite="Lax" if is_localhost else "None",
-        secure=not is_localhost,
-        path="/",
-        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
+    # Optional but convenient: also set a short-lived access cookie
+    set_http_only_cookie(
+        response,
+        key="access_token",
+        value=access_token,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 class Token(BaseModel):
@@ -226,28 +288,53 @@ def refresh_token(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
 
-def get_current_user_dependency(token: str = Security(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user_dependency(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),   # or Security(oauth2_scheme)
+    db: Session = Depends(get_db),
+):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user = db.query(User).filter(User.id == payload.get("id")).first()
+        # Prefer Authorization header; fall back to cookies
+        tok = token or request.cookies.get("access_token") or request.cookies.get("refresh_token")
+        if not tok:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        payload = jwt.decode(tok, SECRET_KEY, algorithms=[ALGORITHM])
+        uid = payload.get("id")
+        if not uid:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        user = db.query(User).filter(User.id == uid).first()
         if not user:
             raise HTTPException(status_code=401, detail="Invalid authentication")
         return UserResponse(id=user.id, email=user.email)
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+
 def get_current_user_model(
-    token: str = Security(oauth2_scheme),
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),   # or Security(oauth2_scheme)
     db: Session = Depends(get_db),
 ) -> User:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user = db.query(User).filter(User.id == payload.get("id")).first()
+        tok = token or request.cookies.get("access_token") or request.cookies.get("refresh_token")
+        if not tok:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        payload = jwt.decode(tok, SECRET_KEY, algorithms=[ALGORITHM])
+        uid = payload.get("id")
+        if not uid:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        user = db.query(User).filter(User.id == uid).first()
         if not user:
             raise HTTPException(status_code=401, detail="Invalid authentication")
         return user
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:

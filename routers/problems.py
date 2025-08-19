@@ -306,7 +306,7 @@ class ProblemOut(BaseModel):
     solved_at: Optional[datetime] = None
 
     class Config:
-        from_attributes = True  # Pydantic v2; use orm_mode=True for v1
+        from_attributes = True  # Pydantic v2; use from_attributes=True for v1
 
 class ProblemCreateIn(BaseModel):
     title: str = Field(..., min_length=5, max_length=200)

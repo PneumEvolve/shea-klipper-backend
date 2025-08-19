@@ -5,6 +5,7 @@ env/
 
 # Ignore environment variables
 .env
+.env.prod
 
 # Ignore compiled Python files
 __pycache__/

@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON, Date, UniqueConstraint
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.ext.associationproxy import association_proxy
 import uuid
 from datetime import datetime
 from database import Base
@@ -52,9 +53,16 @@ class User(Base):
     farm_game_state = relationship("FarmGameState", uselist=False, back_populates="user")
     forge_workers = relationship("ForgeWorker", back_populates="user")
     
-    conversations = relationship("Conversation", secondary="conversation_users", back_populates="users", overlaps="conversation_users")
+    
     inbox_messages = relationship("InboxMessage", back_populates="user")
-    conversation_users = relationship("ConversationUser", back_populates="user")
+    conversation_users = relationship(
+        "ConversationUser",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    conversations = association_proxy("conversation_users", "conversation")
+
+    
 
     nodes = relationship("Node", back_populates="user")  # Nodes this user created
     nodes_joined = relationship(  # Nodes this user joined
@@ -547,10 +555,17 @@ class Conversation(Base):
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     name = Column(String, index=True)
-    
-    users = relationship("User", secondary="conversation_users", back_populates="conversations", overlaps="conversation_users")
+
     messages = relationship("InboxMessage", back_populates="conversation")
-    conversation_users = relationship("ConversationUser", back_populates="conversation", overlaps="users")
+
+    conversation_users = relationship(
+        "ConversationUser",
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+    )
+
+    # proxy to a list[User]
+    users = association_proxy("conversation_users", "user")
 
     def __repr__(self):
         return f"<Conversation(id={self.id}, created_at={self.created_at})>"
@@ -559,11 +574,14 @@ class ConversationUser(Base):
     __tablename__ = "conversation_users"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    conversation_id = Column(Integer, ForeignKey("conversations.id"))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
 
-    user = relationship("User", back_populates="conversation_users", overlaps="conversations")
-    conversation = relationship("Conversation", back_populates="conversation_users", overlaps="users")
+    __table_args__ = (UniqueConstraint("user_id", "conversation_id", name="uq_conv_user"),)
+
+    # ✅ These two lines are REQUIRED
+    user = relationship("User", back_populates="conversation_users")
+    conversation = relationship("Conversation", back_populates="conversation_users")
     
 
 class LivingPlanSection(Base):
