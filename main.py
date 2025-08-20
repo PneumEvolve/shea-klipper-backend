@@ -136,8 +136,10 @@ _allowed = {
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://192.168.4.31:5173",
+    
     "https://sheas-app.netlify.app",
     "https://pneumevolve.com",
+    "https://www.pneumevolve.com",
 }
 if getattr(settings, "FRONTEND_URL", None):
     _allowed.add(settings.FRONTEND_URL)

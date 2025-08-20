@@ -104,6 +104,8 @@ def create_refresh_token(data: dict, expires_delta: timedelta = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+
+
 def verify_recaptcha(token: str) -> bool:
     url = "https://www.google.com/recaptcha/api/siteverify"
     payload = {"secret": RECAPTCHA_SECRET, "response": token}
@@ -115,14 +117,22 @@ def _is_prod_env() -> bool:
     env = str(getattr(app_settings, "ENV", "")).lower()
     return env in ("prod", "production")
 
-def set_http_only_cookie(response: Response, *, key: str, value: str, max_age: int) -> None:
+def set_http_only_cookie(
+    response: Response,
+    *,
+    key: str,
+    value: str,
+    max_age: int,
+    domain: str | None = ".pneumevolve.com",  # <-- set to your apex
+) -> None:
     prod = _is_prod_env()
     response.set_cookie(
         key=key,
         value=value,
         httponly=True,
-        secure=prod,                   # ✅ dev=False (HTTP), prod=True (HTTPS)
-        samesite="None" if prod else "Lax",
+        secure=prod,                   # prod must be HTTPS
+        samesite="none" if prod else "lax",  # <-- lowercase "none"
+        domain=domain if prod else None,     # only set domain in prod
         path="/",
         max_age=max_age,
     )
@@ -265,13 +275,13 @@ class Token(BaseModel):
     token_type: str
 
 @router.post("/refresh")
-def refresh_token(request: Request, db: Session = Depends(get_db)):
-    refresh_token = request.cookies.get("refresh_token")
-    if not refresh_token:
+def refresh_token(request: Request, response: Response, db: Session = Depends(get_db)):
+    rt = request.cookies.get("refresh_token")
+    if not rt:
         raise HTTPException(status_code=401, detail="No refresh token found")
 
     try:
-        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(rt, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("id")
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid token")
@@ -280,8 +290,19 @@ def refresh_token(request: Request, db: Session = Depends(get_db)):
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
 
-        new_access_token = create_access_token({"sub": user.email, "id": user.id})
-        return {"access_token": new_access_token, "token_type": "bearer"}
+        new_access = create_access_token({"sub": user.email, "id": user.id})
+        # optional: rotate refresh
+        new_refresh = create_refresh_token({"sub": user.email, "id": user.id})
+
+        # set cookies (same attributes as login)
+        set_http_only_cookie(
+            response, key="access_token", value=new_access, max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        )
+        set_http_only_cookie(
+            response, key="refresh_token", value=new_refresh, max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+        )
+
+        return {"access_token": new_access, "token_type": "bearer"}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Refresh token expired")
     except jwt.InvalidTokenError:
@@ -295,7 +316,7 @@ def get_current_user_dependency(
 ):
     try:
         # Prefer Authorization header; fall back to cookies
-        tok = token or request.cookies.get("access_token") or request.cookies.get("refresh_token")
+        tok = token or request.cookies.get("access_token")
         if not tok:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
