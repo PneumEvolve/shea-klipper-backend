@@ -1,29 +1,26 @@
-from fastapi import APIRouter, HTTPException, Depends, Security, Request, Response, UploadFile, File
-from sqlalchemy.orm import Session
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-import jwt
-from datetime import timedelta, datetime
-from passlib.context import CryptContext
+from collections import deque
 from database import get_db
-from models import User
-from pydantic import BaseModel, EmailStr
-import requests
-import os
-from typing import Optional, Tuple, Deque, Dict
-from utils.email import send_email
-from schemas import UserResponse, UserCreate, ProfilePicUpdate
+from datetime import timedelta, datetime, timezone
+from fastapi import APIRouter, HTTPException, Depends, Security, Request, Response, UploadFile, File
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from models import Category, user_categories, User
+from passlib.context import CryptContext
+from pydantic import BaseModel, EmailStr
+from schemas import UserResponse, UserCreate, ProfilePicUpdate, UsernameUpdate, AcceptTermsPayload
+from settings import settings as app_settings
 from sqlalchemy import text, func
 from sqlalchemy.exc import IntegrityError
-from database import get_db
-from schemas import UsernameUpdate
-from jose import JWTError
+from sqlalchemy.orm import Session
+from typing import Optional, Tuple, Deque, Dict
+from utils.email import send_email
+import jwt
+import os
+import requests
 import time
-from collections import deque
-from settings import settings as app_settings
-
 
 router = APIRouter()
+
+CURRENT_TERMS_VERSION = os.getenv("CURRENT_TERMS_VERSION", "2025-08-21")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
@@ -140,6 +137,76 @@ def set_http_only_cookie(
 def clear_cookie(response: Response, key: str) -> None:
     response.delete_cookie(key, path="/")
 
+def _accept_terms_core(user: User, version: str, accepted_at: datetime | None = None):
+    if version != CURRENT_TERMS_VERSION:
+        # client is trying to accept an old (or wrong) version
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TERMS_VERSION_MISMATCH",
+                "required_version": CURRENT_TERMS_VERSION,
+                "provided_version": version,
+            },
+        )
+    user.accepted_terms = True
+    user.accepted_terms_version = version
+    user.accepted_terms_at = accepted_at or datetime.now(timezone.utc)
+
+def get_current_user_model(
+    request: Request,
+    token: Optional[str] = Depends(oauth2_scheme),   # or Security(oauth2_scheme)
+    db: Session = Depends(get_db),
+) -> User:
+    try:
+        tok = token or request.cookies.get("access_token") or request.cookies.get("refresh_token")
+        if not tok:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        payload = jwt.decode(tok, SECRET_KEY, algorithms=[ALGORITHM])
+        uid = payload.get("id")
+        if not uid:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        user = db.query(User).filter(User.id == uid).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+        return user
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+def get_current_user_with_db(
+    token: str = Security(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> Tuple[User, Session]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user = db.query(User).filter(User.id == payload.get("id")).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid authentication")
+        return user, db
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:  # <-- replace JWTError
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+def allocate_unique_username(email: str, db: Session) -> str:
+    base = email.split("@")[0].strip()
+    # Optional: normalize / clamp length
+    base = base[:30] or "user"
+    # Check exact first
+    if not db.query(User.id).filter(User.username == base).first():
+        return base
+    # Try base-1, base-2, ...
+    i = 1
+    while True:
+        cand = f"{base}-{i}"
+        if not db.query(User.id).filter(User.username == cand).first():
+            return cand
+        i += 1
+
 
 
 @router.post("/signup", response_model=UserResponse)
@@ -150,36 +217,54 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
     if not user_data.password or len(user_data.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
-    # Skip captcha in dev
+    # (prod) reCAPTCHA
     if app_settings.ENV != "dev":
-        if not verify_recaptcha(user_data.recaptcha_token):
+        if not verify_recaptcha(user_data.recaptcha_token or ""):
             raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
 
-    # ---------- Phase 1: create user (isolated) ----------
+    # Require explicit acceptance at signup
+    if not user_data.accept_terms:
+        raise HTTPException(
+            status_code=412,
+            detail={"code": "TERMS_REQUIRED", "required_version": CURRENT_TERMS_VERSION},
+        )
+
+    # Phase 1: create user
     try:
         existing = db.query(User).filter(User.email == email).first()
         if existing:
             raise HTTPException(status_code=400, detail="Email already registered")
-
+        
+        username = allocate_unique_username(email, db)
         new_user = User(
             email=email,
-            username=email.split("@")[0],
+            username=username,
             hashed_password=hash_password(user_data.password),
         )
         db.add(new_user)
-        db.commit()      # commit just the user
+        db.flush()  # get new_user.id
+
+        # Single place to set + validate
+        _accept_terms_core(new_user, user_data.terms_version)
+
+        db.commit()
         db.refresh(new_user)
 
     except IntegrityError as ie:
         db.rollback()
-        msg = str(ie.orig).lower()
-        # Only translate if it’s clearly the user email constraint
-        if "users" in msg and "email" in msg and "unique" in msg:
-            raise HTTPException(status_code=400, detail="Email already registered")
-        # Otherwise surface a generic 500 to stop the wild goose chase
-        raise HTTPException(status_code=500, detail="Could not create user (DB constraint)")
+        constraint = getattr(getattr(ie.orig, "diag", None), "constraint_name", None)
+        msg = (str(ie.orig) or "").lower()
 
-    # ---------- Phase 2: seed defaults (best effort) ----------
+        if constraint in {"users_email_key", "ix_users_email"} or "email" in msg and "unique" in msg:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        if constraint in {"users_username_key", "uq_users_username"} or "username" in msg and "unique" in msg:
+            raise HTTPException(status_code=400, detail="Username already taken")
+        if "not-null" in msg and "accepted_terms" in msg:
+            raise HTTPException(status_code=500, detail="Server misconfig: accepted_terms missing default")
+        # fallthrough
+        raise HTTPException(status_code=500, detail=f"DB constraint [{constraint or 'unknown'}]")
+
+    # Phase 2: best-effort seeding (unchanged)
     try:
         default_categories = {
             "food": ["Pantry", "Fridge", "Freezer"],
@@ -218,7 +303,20 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
         # Log server-side; return success anyway
         print("[signup] category seeding failed:", repr(e))
 
-    return UserResponse(id=new_user.id, email=new_user.email)
+    return UserResponse.from_orm(new_user)
+
+@router.post("/account/accept-terms", response_model=UserResponse)
+def accept_terms(
+    payload: AcceptTermsPayload,
+    current_user: User = Depends(get_current_user_model),
+    db: Session = Depends(get_db),
+):
+    current_user.accepted_terms = True
+    current_user.accepted_terms_version = payload.version
+    current_user.accepted_terms_at = payload.accepted_at or datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(current_user)
+    return UserResponse.from_orm(current_user)
 
 
 @router.post("/login")
@@ -336,45 +434,6 @@ def get_current_user_dependency(
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-def get_current_user_model(
-    request: Request,
-    token: Optional[str] = Depends(oauth2_scheme),   # or Security(oauth2_scheme)
-    db: Session = Depends(get_db),
-) -> User:
-    try:
-        tok = token or request.cookies.get("access_token") or request.cookies.get("refresh_token")
-        if not tok:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-
-        payload = jwt.decode(tok, SECRET_KEY, algorithms=[ALGORITHM])
-        uid = payload.get("id")
-        if not uid:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        user = db.query(User).filter(User.id == uid).first()
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid authentication")
-        return user
-
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    
-def get_current_user_with_db(
-    token: str = Security(oauth2_scheme),
-    db: Session = Depends(get_db),
-) -> Tuple[User, Session]:
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user = db.query(User).filter(User.id == payload.get("id")).first()
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid authentication")
-        return user, db
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
 
 @router.get("/user", response_model=UserResponse)
 def get_current_user_route(current_user: UserResponse = Depends(get_current_user_dependency)):

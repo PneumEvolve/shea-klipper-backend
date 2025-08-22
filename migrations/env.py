@@ -63,7 +63,6 @@ def _configure_offline():
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         include_object=_include_object,
-        version_locations=version_locations,
     )
 
 def _configure_online(connection):
@@ -73,7 +72,6 @@ def _configure_online(connection):
         compare_type=True,
         compare_server_default=True,
         include_object=_include_object,
-        version_locations=version_locations,
     )
 
 # -------- Entry points --------

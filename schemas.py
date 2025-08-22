@@ -8,6 +8,8 @@ class UserCreate(BaseModel):
     email: str
     password: str
     recaptcha_token: str
+    accept_terms: bool
+    terms_version: str
 
 class Token(BaseModel):
     access_token: str
@@ -18,10 +20,18 @@ class UserResponse(BaseModel):
     email: EmailStr
     username: str | None = None
     profile_pic: Optional[str] = None
+
+    accepted_terms: bool
+    accepted_terms_at: Optional[datetime] = None
+    accepted_terms_version: Optional[str] = None
     
 
     class Config:
         from_attributes = True  # ✅ Fix for Pydantic V2
+    
+class AcceptTermsPayload(BaseModel):
+    version: str
+    accepted_at: Optional[datetime] = None
 
 class UserInfo(UserResponse):
     user_id: int

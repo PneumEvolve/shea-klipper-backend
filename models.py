@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON, Date, UniqueConstraint
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON, Date, UniqueConstraint, text
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.ext.associationproxy import association_proxy
@@ -31,6 +31,13 @@ class User(Base):
     has_active_payment = Column(Boolean, default=False)
     api_balance_dollars = Column(Float, default=0.0)
     profile_pic = Column(String, nullable=True)
+
+    accepted_terms = Column(
+    Boolean, nullable=False,
+    server_default=text('false')        # or: server_default=expr.false()
+)
+    accepted_terms_at = Column(DateTime(timezone=True))
+    accepted_terms_version = Column(String)
 
     payments = relationship("Payment", back_populates="user")
     transcription_usages = relationship("TranscriptionUsage", back_populates="user")
