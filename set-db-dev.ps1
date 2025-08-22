@@ -1,6 +1,6 @@
 # set-db-dev.ps1
 param(
-  [string]$Url = "postgresql+psycopg2://postgres:coolmints@127.0.0.1:5433/appdb?sslmode=disable"
+  [string]$Url = "postgresql+psycopg2://postgres:coolmints@127.0.0.1:5432/appdb?sslmode=disable"
 )
 
 $env:DATABASE_URL = $Url

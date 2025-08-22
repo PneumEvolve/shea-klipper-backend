@@ -241,11 +241,14 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
             username=username,
             hashed_password=hash_password(user_data.password),
         )
+        
+        _accept_terms_core(new_user, user_data.terms_version)
+        
         db.add(new_user)
         db.flush()  # get new_user.id
 
         # Single place to set + validate
-        _accept_terms_core(new_user, user_data.terms_version)
+        
 
         db.commit()
         db.refresh(new_user)
