@@ -429,7 +429,16 @@ def get_current_user_dependency(
         user = db.query(User).filter(User.id == uid).first()
         if not user:
             raise HTTPException(status_code=401, detail="Invalid authentication")
-        return UserResponse(id=user.id, email=user.email)
+
+        # 🔒 Always include accepted_terms; default to False if column not present or None
+        accepted = bool(getattr(user, "accepted_terms", False))
+
+        # Pydantic v2: direct init is fine
+        return UserResponse(
+            id=user.id,
+            email=user.email,
+            accepted_terms=accepted,
+        )
 
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
