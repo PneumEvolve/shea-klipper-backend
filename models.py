@@ -3,6 +3,8 @@ from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.ext.associationproxy import association_proxy
 import uuid
+import enum
+from sqlalchemy import Enum as SAEnum
 from datetime import datetime
 from database import Base
 
@@ -618,6 +620,51 @@ class ForgeIdea(Base):
     votes = relationship("ForgeVote", back_populates="idea", cascade="all, delete-orphan")
     workers = relationship("ForgeWorker", back_populates="idea")
 
+class ItemKind(str, enum.Enum):
+    problem = "problem"
+    idea = "idea"
+
+class ItemStatus(str, enum.Enum):
+    open = "open"
+    in_progress = "in_progress"
+    done = "done"
+    archived = "archived"
+
+class ForgeItem(Base):
+    __tablename__ = "forge_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # provenance (temporary; helps backfill & debugging; can be dropped later)
+    legacy_table = Column(String, nullable=True, index=True)  # 'problems' | 'forge_ideas'
+    legacy_id = Column(Integer, nullable=True, index=True)
+
+    kind = Column(SAEnum(ItemKind, name="forge_item_kind"), nullable=False, index=True)
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=True)
+
+    # carry-overs that map well from existing models
+    status = Column(SAEnum(ItemStatus, name="forge_item_status"), nullable=False, server_default="open")
+    domain = Column(String, nullable=True)   # from Problem
+    scope = Column(String, nullable=True)    # from Problem
+    severity = Column(Integer, nullable=True)  # from Problem
+    notes = Column(Text, nullable=True)      # from ForgeIdea
+    tags = Column(String, nullable=True)     # future use
+    location = Column(String, nullable=True)
+
+    created_by_email = Column(String, nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    # denorm counts so cards render fast
+    votes_count = Column(Integer, nullable=False, server_default="0")
+    followers_count = Column(Integer, nullable=False, server_default="0")
+    pledges_count = Column(Integer, nullable=False, server_default="0")
+    pledges_done = Column(Integer, nullable=False, server_default="0")
+
+    created_by_user = relationship("User")
+
 
 class ForgeVote(Base):
     __tablename__ = "forge_votes"
@@ -635,6 +682,40 @@ class ForgeVote(Base):
 
     def __repr__(self):
         return f"<ForgeVote(idea_id={self.idea_id}, user_email={self.user_email})>"
+    
+class ForgeItemVote(Base):
+    __tablename__ = "forge_item_votes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("forge_items.id", ondelete="CASCADE"), index=True, nullable=False)
+    voter_identity = Column(String, index=True, nullable=False)  # email OR "anon:{uuid}"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("item_id", "voter_identity", name="uq_forge_item_vote_one"),)
+
+class ForgeItemFollow(Base):
+    __tablename__ = "forge_item_follows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("forge_items.id", ondelete="CASCADE"), index=True, nullable=False)
+    identity = Column(String, index=True, nullable=False)  # email OR "anon:{uuid}"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("item_id", "identity", name="uq_forge_item_follow_one"),)
+
+class ForgePledge(Base):
+    __tablename__ = "forge_pledges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    item_id = Column(Integer, ForeignKey("forge_items.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)
+    text = Column(String, nullable=False)
+    done = Column(Boolean, nullable=False, server_default="false")
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    done_at = Column(DateTime, nullable=True)
+
+    item = relationship("ForgeItem")
+    user = relationship("User")
 
 class ForgeWorker(Base):
     __tablename__ = "forge_workers"
