@@ -613,6 +613,7 @@ class ForgeIdea(Base):
     votes_count = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     user_email = Column(String, nullable=False)
+    user_username = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
 
 
@@ -759,6 +760,7 @@ class Problem(Base):
 
     votes_count = Column(Integer, default=0, nullable=False)
     followers_count = Column(Integer, default=0, nullable=False)
+    notes_count = Column(Integer, nullable=False, server_default="0")
 
     # relationships
     duplicates = relationship("Problem", remote_side=[id])
@@ -777,6 +779,30 @@ class Problem(Base):
         uselist=False,
         post_update=True,                  # breaks circular dependency on flush
     )
+
+    notes = relationship(
+        "ProblemNote",
+        back_populates="problem",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ProblemNote.order_index.asc(), ProblemNote.created_at.asc()",
+    )
+
+class ProblemNote(Base):
+    __tablename__ = "problem_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), index=True, nullable=False)
+    author_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String, nullable=True)
+    body = Column(Text, nullable=False)
+    is_public = Column(Boolean, nullable=False, server_default="true")
+    order_index = Column(Integer, nullable=False, server_default="0")  # for manual ordering in UI
+    created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    problem = relationship("Problem", back_populates="notes")
+    author = relationship("User")
 
 class ProblemVote(Base):
     __tablename__ = "problem_votes"
@@ -819,12 +845,40 @@ class Solution(Base):
 
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=True)
 
+    featured_in_forge = Column(Boolean, nullable=False, server_default="false", index=True)
+    impact_score = Column(Float, nullable=False, server_default="0")
+    notes_count = Column(Integer, nullable=False, server_default="0")
+
     problem = relationship(
         "Problem",
         back_populates="solutions",
         foreign_keys=[problem_id],
     )
     conversation = relationship("Conversation")
+
+    notes = relationship(
+        "SolutionNote",
+        back_populates="solution",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="SolutionNote.order_index.asc(), SolutionNote.created_at.asc()",
+    )
+
+class SolutionNote(Base):
+    __tablename__ = "solution_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    solution_id = Column(Integer, ForeignKey("solutions.id", ondelete="CASCADE"), index=True, nullable=False)
+    author_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String, nullable=True)
+    body = Column(Text, nullable=False)
+    is_public = Column(Boolean, nullable=False, server_default="true")
+    order_index = Column(Integer, nullable=False, server_default="0")
+    created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+    solution = relationship("Solution", back_populates="notes")
+    author = relationship("User")
 
 
 class SolutionVote(Base):

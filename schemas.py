@@ -1,13 +1,25 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional
+from pydantic import BaseModel, EmailStr, Field, StringConstraints, constr
+from typing import List, Optional, Annotated
 from datetime import datetime, date
 from uuid import UUID
 
+Username = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        to_lower=True,
+        min_length=3,
+        max_length=30,
+        pattern=r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$",
+    ),
+]
+
 # User Schema
 class UserCreate(BaseModel):
-    email: str
-    password: str
-    recaptcha_token: str
+    email: EmailStr
+    password: constr(min_length=8)
+    username: Username                      # ← required, validated
+    recaptcha_token: Optional[str] = None   # ← optional in dev
     accept_terms: bool
     terms_version: str
 

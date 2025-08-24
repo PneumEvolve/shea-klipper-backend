@@ -15,6 +15,7 @@ from typing import Optional, Tuple, Deque, Dict
 from utils.email import send_email
 import jwt
 import os
+import re
 import requests
 import time
 
@@ -44,6 +45,16 @@ CHALLENGE_SECONDS = 60 * 60
 
 def _now() -> float:
     return time.time()
+
+USERNAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$")
+
+def normalize_username(s: str) -> str:
+    s = (s or "").strip().lower()
+    # collapse spaces -> dash then filter invalid chars
+    s = re.sub(r"\s+", "-", s)
+    s = re.sub(r"[^a-z0-9._-]", "", s)
+    s = s.strip("._-")
+    return s[:30]
 
 def get_client_ip(request: Request) -> str:
     # Honor proxy header if present (Render/NGINX)
@@ -217,55 +228,48 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
     if not user_data.password or len(user_data.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
-    # (prod) reCAPTCHA
+    # prod captcha
     if app_settings.ENV != "dev":
         if not verify_recaptcha(user_data.recaptcha_token or ""):
             raise HTTPException(status_code=400, detail="reCAPTCHA verification failed")
 
-    # Require explicit acceptance at signup
     if not user_data.accept_terms:
         raise HTTPException(
             status_code=412,
             detail={"code": "TERMS_REQUIRED", "required_version": CURRENT_TERMS_VERSION},
         )
 
-    # Phase 1: create user
+    # username required
+    username_norm = normalize_username(user_data.username)
+    if not username_norm or not USERNAME_RE.fullmatch(username_norm):
+        raise HTTPException(status_code=400, detail="Invalid username format")
+
     try:
-        existing = db.query(User).filter(User.email == email).first()
-        if existing:
+        if db.query(User.id).filter(User.email == email).first():
             raise HTTPException(status_code=400, detail="Email already registered")
-        
-        username = allocate_unique_username(email, db)
+        if db.query(User.id).filter(User.username == username_norm).first():
+            raise HTTPException(status_code=400, detail="Username already taken")
+
         new_user = User(
             email=email,
-            username=username,
+            username=username_norm,
             hashed_password=hash_password(user_data.password),
         )
-        
         _accept_terms_core(new_user, user_data.terms_version)
-        
+
         db.add(new_user)
-        db.flush()  # get new_user.id
-
-        # Single place to set + validate
-        
-
+        db.flush()
         db.commit()
         db.refresh(new_user)
 
     except IntegrityError as ie:
         db.rollback()
-        constraint = getattr(getattr(ie.orig, "diag", None), "constraint_name", None)
         msg = (str(ie.orig) or "").lower()
-
-        if constraint in {"users_email_key", "ix_users_email"} or "email" in msg and "unique" in msg:
+        if "users_email_key" in msg or "unique" in msg and "email" in msg:
             raise HTTPException(status_code=400, detail="Email already registered")
-        if constraint in {"users_username_key", "uq_users_username"} or "username" in msg and "unique" in msg:
+        if "users_username_key" in msg or "unique" in msg and "username" in msg:
             raise HTTPException(status_code=400, detail="Username already taken")
-        if "not-null" in msg and "accepted_terms" in msg:
-            raise HTTPException(status_code=500, detail="Server misconfig: accepted_terms missing default")
-        # fallthrough
-        raise HTTPException(status_code=500, detail=f"DB constraint [{constraint or 'unknown'}]")
+        raise HTTPException(status_code=500, detail="Database error")
 
     # Phase 2: best-effort seeding (unchanged)
     try:
@@ -307,6 +311,14 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
         print("[signup] category seeding failed:", repr(e))
 
     return UserResponse.from_orm(new_user)
+
+@router.get("/check-username")
+def check_username(username: str, db: Session = Depends(get_db)):
+    u = normalize_username(username)
+    if not u or not USERNAME_RE.fullmatch(u):
+        return {"ok": False, "error": "Invalid format"}
+    exists = db.query(User.id).filter(User.username == u).first() is not None
+    return {"ok": not exists, "normalized": u}
 
 @router.post("/account/accept-terms", response_model=UserResponse)
 def accept_terms(

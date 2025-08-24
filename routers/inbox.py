@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -6,9 +6,11 @@ from sqlalchemy.orm import Session, selectinload
 from typing import Optional, List
 from sqlalchemy import func, distinct
 
-from models import InboxMessage, Conversation, ConversationUser, User
+from models import Problem, Solution, InboxMessage, Conversation, ConversationUser, User, ForgeItem, Problem, Solution, ForgeIdea as IdeaModel
 from database import get_db
 from models import ForgeIdea as IdeaModel
+
+import re
 
 router = APIRouter()
 
@@ -216,6 +218,73 @@ def get_or_create_feedback_conversation(db: Session, system_user: User, admin_us
     db.refresh(convo)
     return convo
 
+def resolve_conversation_title(db: Session, convo: Conversation) -> str:
+    name = (convo.name or "").strip()
+
+    if name.startswith("system:"):
+        return "System"
+
+    if name.startswith("dm:"):
+        return "Direct Message"
+
+    if name.startswith("idea:"):
+        try:
+            idea_id = int(name.split(":", 1)[1])
+        except Exception:
+            return "Idea"
+        return get_idea_title(db, idea_id) or f"Idea #{idea_id}"
+
+    if name.startswith("problem:"):
+        try:
+            pid = int(name.split(":", 1)[1])
+        except Exception:
+            return "Problem"
+        return get_problem_title(db, pid) or f"Problem #{pid}"
+
+    if name.startswith("solution:"):
+        try:
+            sid = int(name.split(":", 1)[1])
+        except Exception:
+            return "Solution"
+        return get_solution_title(db, sid) or f"Solution #{sid}"
+
+    return f"Conversation #{convo.id}"
+
+def get_problem_title(db: Session, problem_id: int) -> str:
+    row = db.query(Problem).filter(Problem.id == problem_id).first()
+    return (row.title or f"Problem #{problem_id}") if row else f"Problem #{problem_id}"
+
+def get_solution_title(db: Session, solution_id: int) -> str:
+    row = db.query(Solution).filter(Solution.id == solution_id).first()
+    return (row.title or f"Solution #{solution_id}") if row else f"Solution #{solution_id}"
+
+def get_or_create_problem_conversation(db: Session, problem_id: int) -> Conversation:
+    """Use Problem.conversation_id if set; else create/attach a 'problem:{id}' conversation."""
+    prob = db.query(Problem).filter(Problem.id == problem_id).first()
+    if not prob:
+        raise HTTPException(status_code=404, detail="Problem not found")
+
+    # Already linked?
+    if prob.conversation_id:
+        convo = db.query(Conversation).filter(Conversation.id == prob.conversation_id).first()
+        if convo:
+            return convo
+
+    # Try by deterministic name
+    key = f"problem:{problem_id}"
+    convo = db.query(Conversation).filter(Conversation.name == key).first()
+    if not convo:
+        convo = Conversation(name=key)
+        db.add(convo)
+        db.flush()  # get id
+
+    # Attach to problem and persist
+    if prob.conversation_id != convo.id:
+        prob.conversation_id = convo.id
+    db.commit()
+    db.refresh(convo)
+    return convo
+
 # ========= Routes =========
 
 @router.post("/inbox/send")
@@ -379,11 +448,15 @@ def send_dm(payload: DMSendIn, db: Session = Depends(get_db)):
 
 @router.get("/conversations/summaries/{user_email}")
 def conversation_summaries(user_email: str, db: Session = Depends(get_db)):
-    me = get_user_by_email(db, user_email)
+    me = db.query(User).filter(User.email == user_email).first()
+    if not me:
+        raise HTTPException(status_code=404, detail=f"User {user_email} not found")
 
-    convo_ids = [cid for (cid,) in db.query(ConversationUser.conversation_id)
-                                 .filter(ConversationUser.user_id == me.id)
-                                 .all()]
+    convo_ids = [
+        cid for (cid,) in db.query(ConversationUser.conversation_id)
+                            .filter(ConversationUser.user_id == me.id)
+                            .all()
+    ]
     if not convo_ids:
         return []
 
@@ -426,50 +499,174 @@ def conversation_summaries(user_email: str, db: Session = Depends(get_db)):
         )
     }
 
+    # ----- helpers -----
+    ID_ANYWHERE = re.compile(r"(?P<id>\d+)")
+
+    def unslug(s: str) -> str:
+        s = (s or "").strip()
+        if not s:
+            return ""
+        s = s.replace("_", "-")
+        s = re.sub(r"[-\s]+", " ", s).strip()
+        return s.title()
+
+    def parse_kind_id_slug(name: str):
+        if not name:
+            return None, None, ""
+        base = name.strip()
+        low = base.lower()
+
+        kind = None
+        for k in ("idea", "forge", "problem", "solution", "system", "dm"):
+            if low.startswith(k):
+                kind = k
+                break
+
+        rest = low[len(kind):] if kind else low
+        mid = ID_ANYWHERE.search(rest)
+        parsed_id = int(mid.group("id")) if mid else None
+
+        # slug guess
+        if ":" in base:
+            after = base.split(":", 1)[1]
+        else:
+            after = base[len(kind):] if kind else base
+        after = re.sub(r"^\s*\d+[:\-_\s]*", "", after).strip()
+        return kind, parsed_id, after
+
+    def title_for_item_or_legacy(thing_id: Optional[int], slug: str,
+                                 convo_created_at: Optional[datetime],
+                                 last_ts: Optional[datetime]) -> str:
+        """
+        Prefer ForgeItem; but if both ForgeItem and legacy ForgeIdea exist with same id,
+        choose the one whose created_at is closer to the conversation creation (or last message) time.
+        """
+        ref_time = convo_created_at or last_ts
+
+        if thing_id is not None:
+            item = db.query(ForgeItem).filter(ForgeItem.id == thing_id).first()
+            legacy = db.query(IdeaModel).filter(IdeaModel.id == thing_id).first()
+
+            # Only one exists → use it
+            if item and not legacy:
+                return item.title or f"Idea #{thing_id}"
+            if legacy and not item:
+                return legacy.title or f"Idea #{thing_id}"
+
+            # Both exist → pick by proximity to ref_time
+            if item and legacy:
+                if ref_time:
+                    item_dt = getattr(item, "created_at", None)
+                    legacy_dt = getattr(legacy, "created_at", None)
+                    # default far past if missing timestamps, so we don't falsely prefer one
+                    far = datetime(1970, 1, 1)
+                    item_dt = item_dt or far
+                    legacy_dt = legacy_dt or far
+                    if abs(item_dt - ref_time) <= abs(legacy_dt - ref_time):
+                        return item.title or f"Idea #{thing_id}"
+                    else:
+                        return legacy.title or f"Idea #{thing_id}"
+                # No ref_time → prefer older (assume older = legacy)
+                return (legacy.title or f"Idea #{thing_id}")
+
+            # Neither exists → fall back to slug or “Idea #id”
+            return unslug(slug) or f"Idea #{thing_id}"
+
+        # No id → slug or generic
+        return unslug(slug) or "Idea"
+
+    def title_for_problem(pid: Optional[int], slug: str) -> str:
+        if pid is not None:
+            row = db.query(Problem).filter(Problem.id == pid).first()
+            return (row.title if row and row.title else f"Problem #{pid}")
+        return unslug(slug) or "Problem"
+
+    def title_for_solution(sid: Optional[int], slug: str) -> str:
+        if sid is not None:
+            row = db.query(Solution).filter(Solution.id == sid).first()
+            return (row.title if row and row.title else f"Solution #{sid}")
+        return unslug(slug) or "Solution"
+
     out = []
     for m in last_msgs:
         convo = m.conversation
-        cname = convo.name if convo else None
+        cname = (convo.name or "").strip() if convo else ""
 
         other_email = None
         other_username = None
-        other_display = None
+
         idea_id = None
         idea_title = None
+        title = None
 
-        if cname and cname.startswith("dm:"):
-            for cu in convo.conversation_users:
-                if cu.user and cu.user.email != user_email:
-                    other_email = cu.user.email
-                    other_username = cu.user.username
-                    break
-            other_display = other_username or other_email or "Chat"
+        problem_id = None
+        problem_title = None
+        solution_id = None
+        solution_title = None
 
-        elif cname and cname.startswith("system:"):
-            other_display = "System"
+        if cname:
+            kind, parsed_id, slug = parse_kind_id_slug(cname)
 
-        elif cname and cname.startswith("idea:"):
-            try:
-                idea_id = int(cname.split(":", 1)[1])
-            except Exception:
-                idea_id = None
-            if idea_id is not None:
-                idea_title = get_idea_title(db, idea_id)
-                other_display = idea_title or f"Idea #{idea_id}"
-            else:
-                other_display = "Idea"
+            if kind == "dm":
+                for cu in convo.conversation_users:
+                    if cu.user and cu.user.email != user_email:
+                        other_email = cu.user.email
+                        other_username = cu.user.username
+                        break
+                title = other_username or other_email or "Direct Message"
+
+            elif kind == "system":
+                title = "System"
+
+            elif kind in ("idea", "forge"):
+                idea_id = parsed_id
+                idea_title = title_for_item_or_legacy(
+                    parsed_id, slug,
+                    getattr(convo, "created_at", None),
+                    m.timestamp
+                )
+                title = idea_title
+
+            elif kind == "problem":
+                problem_id = parsed_id
+                problem_title = title_for_problem(parsed_id, slug)
+                title = title_for_problem(parsed_id, slug)
+
+            elif kind == "solution":
+                solution_id = parsed_id
+                solution_title = title_for_solution(parsed_id, slug)
+                title = solution_title
+
+            elif cname.isdigit():
+                parsed_id = int(cname)
+                idea_id = parsed_id
+                idea_title = title_for_item_or_legacy(
+                    parsed_id, "",
+                    getattr(convo, "created_at", None),
+                    m.timestamp
+                )
+                title = idea_title
+
+        if not title:
+            title = f"Conversation #{m.conversation_id}"
 
         out.append({
             "conversation_id": m.conversation_id,
-            "conversation_name": cname,      # system:{id}, dm:..., idea:{id}
+            "conversation_name": cname,
+            "title": title,
             "last_content": m.content,
             "last_timestamp": m.timestamp,
             "unread_count": unread_map.get(m.conversation_id, 0),
+
             "other_email": other_email,
             "other_username": other_username,
-            "other_display": other_display,  # what the UI should show
+
             "idea_id": idea_id,
             "idea_title": idea_title,
+            "problem_id": problem_id,
+            "problem_title": problem_title,
+            "solution_id": solution_id,
+            "solution_title": solution_title,
         })
 
     out.sort(key=lambda x: x["last_timestamp"] or datetime.min, reverse=True)
@@ -623,6 +820,17 @@ def leave_conversation(conversation_id: int, payload: LeaveIn, db: Session = Dep
         return {"status": "ok", "message": "left_and_deleted"}
 
     return {"status": "ok", "message": "left"}
+
+@router.get("/conversations/{conversation_id}")
+def get_conversation_meta(conversation_id: int, db: Session = Depends(get_db)):
+    convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not convo:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {
+        "id": convo.id,
+        "name": convo.name,
+        "title": resolve_conversation_title(db, convo),
+    }
 
 @router.delete("/conversations/{conversation_id}")
 def admin_delete_conversation(conversation_id: int, user_email: str, db: Session = Depends(get_db)):
@@ -844,3 +1052,151 @@ def receive_feedback(payload: FeedbackIn, request: Request, db: Session = Depend
     db.refresh(msg)
 
     return {"status": "ok", "message_id": msg.id, "conversation_id": convo.id}
+
+@router.get("/forge/problems/{problem_id}/conversation")
+def get_problem_conversation(problem_id: int, db: Session = Depends(get_db)):
+    convo = get_or_create_problem_conversation(db, problem_id)
+    return {
+        "conversation_id": convo.id,
+        "conversation_name": convo.name,
+        "conversation_title": get_problem_title(db, problem_id),
+    }
+
+@router.get("/forge/problems/{problem_id}/conversation/messages")
+def get_problem_conversation_messages(problem_id: int, db: Session = Depends(get_db)):
+    system_user = get_or_create_system_user(db)
+    convo = get_or_create_problem_conversation(db, problem_id)
+
+    msgs = (
+        db.query(InboxMessage)
+          .options(selectinload(InboxMessage.user))
+          .filter(InboxMessage.conversation_id == convo.id)
+          .order_by(InboxMessage.timestamp.asc())
+          .all()
+    )
+
+    def safe_display(m):
+        if m.user_id == system_user.id:
+            return "System"
+        if m.user and getattr(m.user, "username", None):
+            return m.user.username
+        if m.user_id:
+            return f"User {m.user_id}"
+        return "User"
+
+    return [
+        {
+            "id": m.id,
+            "content": m.content,
+            "timestamp": m.timestamp,
+            "read": m.read,
+            "from_username": (m.user.username if m.user else None),
+            "from_user_id": m.user_id,
+            "from_system": (m.user_id == system_user.id),
+            "from_display": safe_display(m),
+        }
+        for m in msgs
+    ]
+
+class ProblemSendIn(BaseModel):
+    sender_email: str
+    content: str
+
+@router.post("/forge/problems/{problem_id}/conversation/send")
+def send_to_problem_conversation(
+    problem_id: int,
+    payload: ProblemSendIn,
+    db: Session = Depends(get_db),
+):
+    sender = get_user_by_email(db, (payload.sender_email or "").strip().lower())
+    if not sender:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    convo = get_or_create_problem_conversation(db, problem_id)
+
+    # Ensure membership so it shows in the sender's feed
+    link = (
+        db.query(ConversationUser)
+          .filter(ConversationUser.conversation_id == convo.id,
+                  ConversationUser.user_id == sender.id)
+          .first()
+    )
+    if not link:
+        db.add(ConversationUser(user_id=sender.id, conversation_id=convo.id))
+
+    content = (payload.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty message")
+
+    msg = InboxMessage(
+        user_id=sender.id,
+        conversation_id=convo.id,
+        content=content,
+        timestamp=datetime.utcnow(),
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+
+    display = sender.username if sender.username else f"User {msg.user_id}"
+
+    return {
+        "status": "ok",
+        "conversation_id": convo.id,
+        "message": {
+            "id": msg.id,
+            "content": msg.content,
+            "timestamp": msg.timestamp,
+            "read": msg.read,
+            "from_user_id": msg.user_id,
+            "from_username": sender.username if sender.username else None,
+            "from_display": display,
+        },
+    }
+
+@router.post("/forge/problems/{problem_id}/conversation/join")
+def join_problem_conversation(problem_id: int, user_email: str, db: Session = Depends(get_db)):
+    user = get_user_by_email(db, user_email)
+    convo = get_or_create_problem_conversation(db, problem_id)
+
+    exists = (
+        db.query(ConversationUser)
+          .filter(ConversationUser.conversation_id == convo.id,
+                  ConversationUser.user_id == user.id)
+          .first()
+    )
+    if exists:
+        return {"status": "ok", "message": "already_member", "conversation_id": convo.id}
+
+    db.add(ConversationUser(user_id=user.id, conversation_id=convo.id))
+    db.commit()
+    return {"status": "ok", "message": "joined", "conversation_id": convo.id}
+
+@router.get("/forge/problems/{problem_id}/conversation/following")
+def is_following_problem_conversation(problem_id: int, user_email: str, db: Session = Depends(get_db)):
+    user = get_user_by_email(db, user_email)
+    convo = get_or_create_problem_conversation(db, problem_id)
+    exists = (
+        db.query(ConversationUser.id)
+          .filter(ConversationUser.conversation_id == convo.id,
+                  ConversationUser.user_id == user.id)
+          .first()
+    )
+    return {"conversation_id": convo.id, "following": bool(exists)}
+
+@router.post("/forge/problems/{problem_id}/conversation/unfollow")
+def unfollow_problem_conversation(problem_id: int, user_email: str, db: Session = Depends(get_db)):
+    user = get_user_by_email(db, user_email)
+    convo = get_or_create_problem_conversation(db, problem_id)
+    link = (
+        db.query(ConversationUser)
+          .filter(ConversationUser.conversation_id == convo.id,
+                  ConversationUser.user_id == user.id)
+          .first()
+    )
+    if not link:
+        return {"status": "ok", "message": "not_following", "conversation_id": convo.id}
+
+    db.delete(link)
+    db.commit()
+    return {"status": "ok", "message": "unfollowed", "conversation_id": convo.id}
