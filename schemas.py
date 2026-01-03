@@ -496,3 +496,5 @@ class PreForgeSyncTopicIn(BaseModel):
 
 class PreForgeSyncIn(BaseModel):
     topics: List[PreForgeSyncTopicIn] = Field(default_factory=list)
+    deleted_topic_client_ids: List[str] = Field(default_factory=list)
+    deleted_item_client_ids: List[str] = Field(default_factory=list)
