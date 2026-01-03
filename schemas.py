@@ -435,25 +435,34 @@ class LivingPlanSectionSchema(BaseModel):
 
 
 # --- PreForge Schemas ---------------------------------------------------------
+from enum import Enum
+
+class PreForgeItemKind(str, Enum):
+    note = "note"
+    question = "question"
 
 class PreForgeItemCreate(BaseModel):
-    kind: str = "note"        # "note" | "question"
+    kind: PreForgeItemKind = PreForgeItemKind.note
     text: str
+    client_id: Optional[str] = None  # for offline merge
 
 class PreForgeItemOut(BaseModel):
     id: int
-    kind: str
+    kind: PreForgeItemKind
     text: str
     created_at: datetime
     updated_at: datetime
+    client_id: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class PreForgeTopicCreate(BaseModel):
     title: str
     pinned: Optional[str] = ""
-    tags: List[str] = []
+    tags: List[str] = Field(default_factory=list)
+    client_id: Optional[str] = None  # for offline merge
 
 class PreForgeTopicUpdate(BaseModel):
     title: Optional[str] = None
@@ -463,10 +472,27 @@ class PreForgeTopicOut(BaseModel):
     id: int
     title: str
     pinned: str
-    tags: List[str] = []
-    items: List[PreForgeItemOut] = []
+    tags: List[str] = Field(default_factory=list)
+    items: List[PreForgeItemOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+    client_id: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = {
+        "from_attributes": True
+    }
+
+class PreForgeSyncItemIn(BaseModel):
+    client_id: str
+    kind: PreForgeItemKind = PreForgeItemKind.note
+    text: str
+
+class PreForgeSyncTopicIn(BaseModel):
+    client_id: str
+    title: str
+    pinned: Optional[str] = ""
+    tags: List[str] = Field(default_factory=list)
+    items: List[PreForgeSyncItemIn] = Field(default_factory=list)
+
+class PreForgeSyncIn(BaseModel):
+    topics: List[PreForgeSyncTopicIn] = Field(default_factory=list)

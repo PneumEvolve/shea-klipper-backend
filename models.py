@@ -933,6 +933,9 @@ class PreForgeTopic(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
 
+    # NEW
+    client_id = Column(String, nullable=True)
+
     title = Column(String, nullable=False, default="")
     pinned = Column(Text, nullable=False, default="")
 
@@ -943,6 +946,10 @@ class PreForgeTopic(Base):
     items = relationship("PreForgeItem", back_populates="topic", cascade="all, delete-orphan", passive_deletes=True)
     tags = relationship("PreForgeTag", secondary=preforge_topic_tags, back_populates="topics")
 
+    __table_args__ = (
+        # NEW: prevents duplicates during sync
+        UniqueConstraint("user_id", "client_id", name="uq_preforge_topic_user_client_id"),
+    )
 
 class PreForgeItem(Base):
     __tablename__ = "preforge_items"
@@ -950,7 +957,10 @@ class PreForgeItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     topic_id = Column(Integer, ForeignKey("preforge_topics.id", ondelete="CASCADE"), index=True, nullable=False)
 
-    kind = Column(String, nullable=False, default="note")  # "note" | "question"
+    # NEW
+    client_id = Column(String, nullable=True)
+
+    kind = Column(String, nullable=False, default="note")
     text = Column(Text, nullable=False, default="")
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -958,6 +968,10 @@ class PreForgeItem(Base):
 
     topic = relationship("PreForgeTopic", back_populates="items")
 
+    __table_args__ = (
+        # NEW: prevents duplicates per-topic during sync
+        UniqueConstraint("topic_id", "client_id", name="uq_preforge_item_topic_client_id"),
+    )
 
 class PreForgeTag(Base):
     __tablename__ = "preforge_tags"
