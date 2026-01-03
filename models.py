@@ -916,3 +916,61 @@ class SeedEvent(Base):
     ref = Column(String, nullable=True)
     meta = Column("metadata", JSON, nullable=True)                # from sqlalchemy import JSON
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+# --- PreForge (personal topic manager) ----------------------------------------
+
+preforge_topic_tags = Table(
+    "preforge_topic_tags",
+    Base.metadata,
+    Column("topic_id", Integer, ForeignKey("preforge_topics.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("preforge_tags.id", ondelete="CASCADE"), primary_key=True),
+    UniqueConstraint("topic_id", "tag_id", name="uq_preforge_topic_tag"),
+)
+
+class PreForgeTopic(Base):
+    __tablename__ = "preforge_topics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+
+    title = Column(String, nullable=False, default="")
+    pinned = Column(Text, nullable=False, default="")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+    items = relationship("PreForgeItem", back_populates="topic", cascade="all, delete-orphan", passive_deletes=True)
+    tags = relationship("PreForgeTag", secondary=preforge_topic_tags, back_populates="topics")
+
+
+class PreForgeItem(Base):
+    __tablename__ = "preforge_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    topic_id = Column(Integer, ForeignKey("preforge_topics.id", ondelete="CASCADE"), index=True, nullable=False)
+
+    kind = Column(String, nullable=False, default="note")  # "note" | "question"
+    text = Column(Text, nullable=False, default="")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    topic = relationship("PreForgeTopic", back_populates="items")
+
+
+class PreForgeTag(Base):
+    __tablename__ = "preforge_tags"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+    name = Column(String, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user = relationship("User")
+    topics = relationship("PreForgeTopic", secondary=preforge_topic_tags, back_populates="tags")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_preforge_tag_user_name"),
+    )

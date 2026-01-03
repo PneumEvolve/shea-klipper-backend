@@ -432,3 +432,41 @@ class LivingPlanSectionSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- PreForge Schemas ---------------------------------------------------------
+
+class PreForgeItemCreate(BaseModel):
+    kind: str = "note"        # "note" | "question"
+    text: str
+
+class PreForgeItemOut(BaseModel):
+    id: int
+    kind: str
+    text: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class PreForgeTopicCreate(BaseModel):
+    title: str
+    pinned: Optional[str] = ""
+    tags: List[str] = []
+
+class PreForgeTopicUpdate(BaseModel):
+    title: Optional[str] = None
+    pinned: Optional[str] = None
+
+class PreForgeTopicOut(BaseModel):
+    id: int
+    title: str
+    pinned: str
+    tags: List[str] = []
+    items: List[PreForgeItemOut] = []
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

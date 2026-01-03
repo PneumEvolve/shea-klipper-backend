@@ -62,6 +62,7 @@ from routers import (
     living_plan,
     problems,
     forge,
+    preforge,
 )
 
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -206,8 +207,8 @@ def db_where():
             "host": db.execute(text("select inet_server_addr()")).scalar(),
             "port": db.execute(text("select inet_server_port()")).scalar(),
             "schema": db.execute(text("select current_schema()")).scalar(),
-            "users_count": db.execute(text("select count(*) from public.users")).scalar(),
-            "users_emails": [r[0] for r in db.execute(text("select email from public.users limit 5")).all()],
+            "db_url_hint": ("supabase" if "supabase" in (os.getenv("DATABASE_URL") or "").lower() else "other/unknown"),
+            "alembic_version": db.execute(text("select version_num from alembic_version")).scalar()
         }
 
 # -------------------- Routers -------------------- #
@@ -229,3 +230,4 @@ app.include_router(living_plan.router)
 app.include_router(problems.router)
 app.include_router(forge.router)
 app.include_router(seed_router.router)
+app.include_router(preforge.router)

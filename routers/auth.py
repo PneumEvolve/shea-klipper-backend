@@ -169,7 +169,7 @@ def get_current_user_model(
     db: Session = Depends(get_db),
 ) -> User:
     try:
-        tok = token or request.cookies.get("access_token") or request.cookies.get("refresh_token")
+        tok = token or request.cookies.get("access_token")
         if not tok:
             raise HTTPException(status_code=401, detail="Not authenticated")
 

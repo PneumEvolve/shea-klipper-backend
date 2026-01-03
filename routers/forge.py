@@ -799,6 +799,46 @@ def get_problem(
 
     return result
 
+@router.delete("/problems/{problem_id}")
+def delete_problem(
+    problem_id: int,
+    user: User = Depends(get_current_user_dependency),
+    db: Session = Depends(get_db),
+):
+    # 1) Load problem or 404
+    prob = db.query(Problem).filter(Problem.id == problem_id).first()
+    if not prob:
+        raise HTTPException(404, "Problem not found")
+
+    # 2) Auth: creator or admin
+    email = (getattr(user, "email", None) or "").lower()
+    is_creator = email and email == (prob.created_by_email or "").lower()
+    is_admin = email == "sheaklipper@gmail.com"
+    if not (is_creator or is_admin):
+        raise HTTPException(403, "Not authorized to delete this problem")
+
+    # 3) If a ForgeItem mirrors this problem, delete it (and its counters’ rows)
+    fi = (
+        db.query(ForgeItem)
+        .filter(
+            ForgeItem.kind == ItemKind.problem,
+            ForgeItem.legacy_table == "problems",
+            ForgeItem.legacy_id == problem_id,
+        )
+        .first()
+    )
+    if fi:
+        db.query(ForgePledge).filter(ForgePledge.item_id == fi.id).delete(synchronize_session=False)
+        db.query(ForgeItemFollow).filter(ForgeItemFollow.item_id == fi.id).delete(synchronize_session=False)
+        db.query(ForgeItemVote).filter(ForgeItemVote.item_id == fi.id).delete(synchronize_session=False)
+        db.delete(fi)
+
+    # 4) Delete the problem (DB ON DELETE CASCADE handles solutions & notes)
+    db.delete(prob)
+    db.commit()
+
+    return {"ok": True}
+
 @router.get("/problems/{problem_id}/pledges")
 def list_problem_pledges(
     problem_id: int,
