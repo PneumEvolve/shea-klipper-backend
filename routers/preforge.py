@@ -19,13 +19,16 @@ from routers.auth import get_current_user_model
 from models import User
 import re
 
+
 router = APIRouter(prefix="/preforge", tags=["preforge"])
 
-
 def normalize_tag(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip().replace("#", ""))
+    return (s or "").strip().replace("#", "").replace("  ", " ")
 
 def topic_to_out(t: PreForgeTopic) -> PreForgeTopicOut:
+    # IMPORTANT: ensure items are included here, using your real logic.
+    # If you accidentally removed items mapping earlier, sync will look like “items disappeared”.
+    from schemas import PreForgeItemOut
     return PreForgeTopicOut(
         id=t.id,
         title=t.title,
@@ -40,6 +43,7 @@ def topic_to_out(t: PreForgeTopic) -> PreForgeTopicOut:
         created_at=t.created_at,
         updated_at=t.updated_at,
     )
+
 
 def safe_kind(kind_val) -> str:
     """
@@ -347,7 +351,6 @@ def get_topic_by_client_id(client_id: str, db: Session = Depends(get_db), user: 
     return topic_to_out(topic)
 
 
-
 @router.post("/sync", response_model=list[PreForgeTopicOut])
 def sync_preforge(
     payload: PreForgeSyncIn,
@@ -356,8 +359,10 @@ def sync_preforge(
 ):
     incoming_topics = payload.topics or []
 
-    # --- Backfill client_id for legacy server rows (pre-client_id era) ---
-    existing_topics_all = db.query(PreForgeTopic).filter(PreForgeTopic.user_id == user.id).all()
+    # --- Backfill: ensure existing server topics/items have client_id so merges don't duplicate later ---
+    existing_topics_all = (
+        db.query(PreForgeTopic).filter(PreForgeTopic.user_id == user.id).all()
+    )
     for t in existing_topics_all:
         if not getattr(t, "client_id", None):
             t.client_id = str(uuid4())
@@ -374,45 +379,36 @@ def sync_preforge(
 
     db.flush()
 
-    # --- Apply deletions FIRST (tombstones) ---
+    # ✅ 1) APPLY TOPIC TOMBSTONES FIRST
     deleted_topic_cids = [x for x in (payload.deleted_topic_client_ids or []) if x]
     if deleted_topic_cids:
         topics_to_delete = (
             db.query(PreForgeTopic)
-            .filter(PreForgeTopic.user_id == user.id, PreForgeTopic.client_id.in_(deleted_topic_cids))
+            .filter(
+                PreForgeTopic.user_id == user.id,
+                PreForgeTopic.client_id.in_(deleted_topic_cids),
+            )
             .all()
         )
         for t in topics_to_delete:
             db.delete(t)
+        db.flush()
 
-    deleted_item_cids = [x for x in (payload.deleted_item_client_ids or []) if x]
-    if deleted_item_cids:
-        items_to_delete = (
-            db.query(PreForgeItem)
-            .join(PreForgeTopic, PreForgeItem.topic_id == PreForgeTopic.id)
-            .filter(
-                PreForgeTopic.user_id == user.id,
-                PreForgeItem.client_id.in_(deleted_item_cids),
-            )
-            .all()
-        )
-        for it in items_to_delete:
-            db.delete(it)
-
-    db.flush()
-
-    # --- Prefetch topics by client_id ---
-    topic_client_ids = [t.client_id for t in incoming_topics if getattr(t, "client_id", None)]
+    # --- Prefetch existing topics by client_id for quick upsert ---
+    client_ids = [t.client_id for t in incoming_topics if t.client_id]
     existing_by_client: Dict[str, PreForgeTopic] = {}
-    if topic_client_ids:
+    if client_ids:
         rows = (
             db.query(PreForgeTopic)
-            .filter(PreForgeTopic.user_id == user.id, PreForgeTopic.client_id.in_(topic_client_ids))
+            .filter(
+                PreForgeTopic.user_id == user.id,
+                PreForgeTopic.client_id.in_(client_ids),
+            )
             .all()
         )
         existing_by_client = {r.client_id: r for r in rows if r.client_id}
 
-    # --- Prefetch/create tags ---
+    # --- Prefetch tags by name (per user unique) ---
     all_tag_names = set()
     for t in incoming_topics:
         for raw in (t.tags or []):
@@ -438,8 +434,12 @@ def sync_preforge(
 
     # --- Upsert topics + items ---
     for incoming in incoming_topics:
-        cid = getattr(incoming, "client_id", None)
+        cid = incoming.client_id
         if not cid:
+            continue
+
+        # if client tries to recreate a tombstoned id in same sync, skip it
+        if cid in deleted_topic_cids:
             continue
 
         title = (incoming.title or "").strip()
@@ -463,34 +463,39 @@ def sync_preforge(
                 topic.pinned = incoming.pinned or ""
 
         # tags
-        normalized_tags = []
+        normalized = []
         for raw in (incoming.tags or []):
             name = normalize_tag(raw)
             if name and name in tags_by_name:
-                normalized_tags.append(tags_by_name[name])
-        topic.tags = list({tg.id: tg for tg in normalized_tags}.values())
+                normalized.append(tags_by_name[name])
+        topic.tags = list({tg.id: tg for tg in normalized}.values())
 
-        # items upsert (client_id REQUIRED)
+        # items upsert
         incoming_items = incoming.items or []
-        item_client_ids = [i.client_id for i in incoming_items if getattr(i, "client_id", None)]
+        item_client_ids = [i.client_id for i in incoming_items if i.client_id]
 
         existing_items_by_client: Dict[str, PreForgeItem] = {}
         if item_client_ids:
             rows = (
                 db.query(PreForgeItem)
-                .filter(PreForgeItem.topic_id == topic.id, PreForgeItem.client_id.in_(item_client_ids))
+                .filter(
+                    PreForgeItem.topic_id == topic.id,
+                    PreForgeItem.client_id.in_(item_client_ids),
+                )
                 .all()
             )
             existing_items_by_client = {r.client_id: r for r in rows if r.client_id}
 
         for it in incoming_items:
-            icid = getattr(it, "client_id", None)
+            icid = it.client_id
             if not icid:
-                # If this happens, your frontend payload is missing client_id
                 continue
 
-            kind = safe_kind(getattr(it, "kind", None))
-            text = (getattr(it, "text", "") or "").strip()
+            kind = (it.kind or "note").strip()
+            if kind not in ("note", "question"):
+                kind = "note"
+
+            text = (it.text or "").strip()
             if not text:
                 continue
 
@@ -511,13 +516,10 @@ def sync_preforge(
 
     db.commit()
 
-    # return server truth
     topics = (
         db.query(PreForgeTopic)
         .filter(PreForgeTopic.user_id == user.id)
         .order_by(PreForgeTopic.updated_at.desc())
         .all()
     )
-
-    # IMPORTANT: use your real topic_to_out that includes items
     return [topic_to_out(t) for t in topics]
