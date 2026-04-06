@@ -420,6 +420,12 @@ def refresh_token(request: Request, response: Response, db: Session = Depends(ge
         raise HTTPException(status_code=401, detail="Refresh token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+    
+@router.post("/logout")
+def logout(response: Response):
+    clear_cookie(response, "access_token")
+    clear_cookie(response, "refresh_token")
+    return {"ok": True}
 
 
 def get_current_user_dependency(
