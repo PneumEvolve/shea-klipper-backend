@@ -3,7 +3,7 @@ from sib_api_v3_sdk.rest import ApiException
 from dotenv import load_dotenv
 import os
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 def send_email(to_email: str, subject: str, body: str):
     configuration = sib_api_v3_sdk.Configuration()
@@ -30,3 +30,4 @@ def send_email(to_email: str, subject: str, body: str):
         print("📨 Email sent successfully:", response)
     except ApiException as e:
         print("❌ Error sending email:", e)
+        raise

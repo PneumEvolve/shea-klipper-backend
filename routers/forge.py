@@ -1089,6 +1089,28 @@ def patch_solution(
         "impact_score": sol.impact_score,
     }
 
+@router.delete("/solutions/{solution_id}")
+def delete_solution(
+    solution_id: int,
+    user: User = Depends(get_current_user_dependency),
+    db: Session = Depends(get_db),
+):
+    sol = _get_solution_or_404(db, solution_id)
+
+    email = (getattr(user, "email", None) or "").lower()
+    is_creator = email and email == (sol.created_by_email or "").lower()
+    is_admin = email == "sheaklipper@gmail.com"
+    if not (is_creator or is_admin):
+        raise HTTPException(403, "Not authorized to delete this solution")
+
+    # delete child notes and votes first
+    db.query(SolutionNote).filter(SolutionNote.solution_id == solution_id).delete(synchronize_session=False)
+    db.query(SolutionVote).filter(SolutionVote.solution_id == solution_id).delete(synchronize_session=False)
+
+    db.delete(sol)
+    db.commit()
+    return {"ok": True}
+
 @router.post("/solutions/{solution_id}/vote")
 def vote_solution(
     solution_id: int,

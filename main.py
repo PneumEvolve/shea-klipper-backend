@@ -2,13 +2,13 @@ import os
 import logging
 import atexit
 from typing import List
-
+ 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from apscheduler.schedulers.background import BackgroundScheduler
-
+ 
 # ⬇️ env settings (unchanged)
 try:
     from settings import settings
@@ -25,13 +25,12 @@ except Exception:
         ENABLE_SUMMARY = os.getenv("ENABLE_SUMMARY", "false").lower() == "true"
         OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     settings = _Fallback()
-
+ 
 # -------------------- Logging -------------------- #
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pneumevolve")
-
+ 
 # -------------------- FastAPI app -------------------- #
-# ✅ Docs/OpenAPI live under /api/* so the Vite proxy forwards correctly.
 app = FastAPI(
     title="PneumEvolve API",
     debug=getattr(settings, "DEBUG", True),
@@ -39,11 +38,12 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
-
-# -------------------- Local imports (your code) -------------------- #
+ 
+# -------------------- Local imports -------------------- #
 from database import SessionLocal
 from models import WeDreamEntry, DreamMachineOutput
 from routers import seed as seed_router
+from routers.stillness import router as stillness_router
 from routers import (
     auth,
     meal_planning,
@@ -64,7 +64,7 @@ from routers import (
     forge,
     preforge,
 )
-
+ 
 # -------------------- Dream Machine Scheduled Job -------------------- #
 def regenerate_dream_machine():
     if not getattr(settings, "ENABLE_SUMMARY", False) or not getattr(settings, "OPENAI_API_KEY", None):
@@ -75,7 +75,7 @@ def regenerate_dream_machine():
     except Exception as e:
         logger.error("[Dream Machine] OpenAI import failed: %s", e)
         return
-
+ 
     logger.info("[Dream Machine] Running scheduled summary...")
     db: Session = SessionLocal()
     try:
@@ -86,9 +86,9 @@ def regenerate_dream_machine():
         all_visions = "\n".join([entry.vision for entry in entries])
         prompt = f"""
 You are a collective AI spirit. The following visions were submitted by different humans dreaming of a better world:
-
+ 
 {all_visions}
-
+ 
 Create:
 1. A short summary of the main shared themes.
 2. A collective mantra under 12 words that embodies the dream.
@@ -118,33 +118,54 @@ Create:
         logger.error("[Dream Machine] Error occurred", exc_info=e)
     finally:
         db.close()
-
-scheduler = None
-if getattr(settings, "ENABLE_SUMMARY", False) and getattr(settings, "OPENAI_API_KEY", None):
-    try:
-        scheduler = BackgroundScheduler()
+ 
+ 
+# -------------------- Stillness Notification Job -------------------- #
+# Imported here so it only loads after all models/db are ready
+from utils.stillness_scheduler import check_and_notify_stillness
+ 
+ 
+# -------------------- Scheduler -------------------- #
+# Always start the scheduler — stillness notifications run regardless of
+# ENABLE_SUMMARY. Dream Machine job is added conditionally inside.
+try:
+    scheduler = BackgroundScheduler()
+ 
+    # Stillness: check every minute for groups whose window opens in ~2 min
+    scheduler.add_job(
+        check_and_notify_stillness,
+        "interval",
+        minutes=1,
+        id="stillness_notifications",
+    )
+ 
+    # Dream Machine: only if summary feature is on
+    if getattr(settings, "ENABLE_SUMMARY", False) and getattr(settings, "OPENAI_API_KEY", None):
         scheduler.add_job(regenerate_dream_machine, "cron", hour=2)
-        scheduler.start()
-        atexit.register(lambda: scheduler.shutdown())
         logger.info("[Scheduler] Dream Machine job scheduled (2 AM).")
-    except Exception as e:
-        logger.error("[Scheduler] Failed to start: %s", e)
-else:
-    logger.info("[Scheduler] Disabled (summary feature off or no OPENAI_API_KEY).")
-
+    else:
+        logger.info("[Scheduler] Dream Machine disabled (summary off or no OPENAI_API_KEY).")
+ 
+    scheduler.start()
+    atexit.register(lambda: scheduler.shutdown())
+    logger.info("[Scheduler] Started — stillness notifications active.")
+ 
+except Exception as e:
+    logger.error("[Scheduler] Failed to start: %s", e)
+ 
+ 
 # -------------------- Middleware -------------------- #
 _allowed = {
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://192.168.4.31:5173",
-    
     "https://sheas-app.netlify.app",
     "https://pneumevolve.com",
     "https://www.pneumevolve.com",
 }
 if getattr(settings, "FRONTEND_URL", None):
     _allowed.add(settings.FRONTEND_URL)
-
+ 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(_allowed),
@@ -152,7 +173,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+ 
 # -------------------- Health / Introspection -------------------- #
 @app.get("/health")
 def health():
@@ -167,7 +188,7 @@ def health():
         },
         "cors_allowed": list(_allowed),
     }
-
+ 
 @app.get("/__ping")
 def ping():
     from datetime import datetime
@@ -181,7 +202,7 @@ def ping():
         db_ok = True
     except Exception:
         db_ok = False
-
+ 
     return {
         "ok": True,
         "time": datetime.utcnow().isoformat() + "Z",
@@ -197,7 +218,7 @@ def ping():
             "dsn": ("prod" if db_dsn and "supabase" in db_dsn else "local/other"),
         },
     }
-
+ 
 @app.get("/__db_where")
 def db_where():
     with SessionLocal() as db:
@@ -210,7 +231,7 @@ def db_where():
             "db_url_hint": ("supabase" if "supabase" in (os.getenv("DATABASE_URL") or "").lower() else "other/unknown"),
             "alembic_version": db.execute(text("select version_num from alembic_version")).scalar()
         }
-
+ 
 # -------------------- Routers -------------------- #
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(meal_planning.router, prefix="/meal-planning", tags=["Meal Planning"])
@@ -231,3 +252,4 @@ app.include_router(problems.router)
 app.include_router(forge.router)
 app.include_router(seed_router.router)
 app.include_router(preforge.router)
+app.include_router(stillness_router, prefix="/stillness", tags=["stillness"])
