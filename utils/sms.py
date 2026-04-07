@@ -18,28 +18,25 @@ TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER")
  
  
 def send_sms(to_number: str, body: str) -> bool:
-    """
-    Send an SMS via Twilio.
-    Returns True on success, False on failure.
-    Raises on error so the caller can handle it.
-    """
-    if not all([TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER]):
-        logger.warning("[sms] Twilio credentials not configured — skipping SMS")
+    # Read at call time — not module load time — so Render env vars are always fresh
+    sid   = os.getenv("TWILIO_ACCOUNT_SID")
+    token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_num = os.getenv("TWILIO_FROM_NUMBER")
+
+    logger.info(f"[sms] credentials present: SID={bool(sid)} TOKEN={bool(token)} FROM={bool(from_num)}")
+
+    if not all([sid, token, from_num]):
+        logger.warning("[sms] Twilio credentials not configured — skipping")
         return False
- 
-    # Normalize number — ensure it starts with +
+
     number = to_number.strip()
     if not number.startswith("+"):
         number = "+" + number
- 
+
     try:
         from twilio.rest import Client
-        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        message = client.messages.create(
-            body=body,
-            from_=TWILIO_FROM_NUMBER,
-            to=number,
-        )
+        client = Client(sid, token)
+        message = client.messages.create(body=body, from_=from_num, to=number)
         logger.info(f"[sms] sent to {number} — sid: {message.sid}")
         return True
     except Exception as e:

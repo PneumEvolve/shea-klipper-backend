@@ -124,15 +124,16 @@ def check_and_notify_stillness():
                 # Send SMS if they have a phone number
                 if phone:
                     try:
-                        send_sms(
+                        sms_sent = send_sms(  # ← capture the return value
                             to_number=phone,
                             body=_build_sms(group_name, seconds_until_open),
                         )
-                        sms_sent = True
-                        logger.info(f"[stillness] SMS sent to {phone} for '{group_name}'")
+                        if sms_sent:
+                            logger.info(f"[stillness] SMS sent to {phone} for '{group_name}'")
+                        else:
+                            logger.warning(f"[stillness] SMS skipped for {phone} — credentials missing or send returned False")
                     except Exception as e:
-                        logger.error(f"[stillness] SMS failed for {phone}: {e}")
-                        print(f"DEBUG: email_sent={email_sent}, sms_sent={sms_sent}, phone={phone}")
+                            logger.error(f"[stillness] SMS failed for {phone}: {e}")
  
                 # Record as notified if at least one channel succeeded
                 if email_sent or sms_sent:

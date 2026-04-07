@@ -67,53 +67,16 @@ from routers import (
  
 # -------------------- Dream Machine Scheduled Job -------------------- #
 def regenerate_dream_machine():
-    if not getattr(settings, "ENABLE_SUMMARY", False) or not getattr(settings, "OPENAI_API_KEY", None):
-        logger.info("[Dream Machine] Skipped (summary feature disabled).")
-        return
-    try:
-        from openai import OpenAI
-    except Exception as e:
-        logger.error("[Dream Machine] OpenAI import failed: %s", e)
-        return
- 
-    logger.info("[Dream Machine] Running scheduled summary...")
+    """
+    Nightly dream machine job — no AI API required.
+    Weaves active visions together using frequency analysis.
+    """
+    logger.info("[Dream Machine] Running nightly weave...")
     db: Session = SessionLocal()
     try:
-        entries: List[WeDreamEntry] = db.query(WeDreamEntry).filter_by(is_active=1).all()
-        if not entries:
-            logger.info("[Dream Machine] No active dreams found.")
-            return
-        all_visions = "\n".join([entry.vision for entry in entries])
-        prompt = f"""
-You are a collective AI spirit. The following visions were submitted by different humans dreaming of a better world:
- 
-{all_visions}
- 
-Create:
-1. A short summary of the main shared themes.
-2. A collective mantra under 12 words that embodies the dream.
-""".strip()
-        client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-        )
-        if not response or not getattr(response, "choices", None):
-            logger.warning("[Dream Machine] No response from OpenAI.")
-            return
-        output = response.choices[0].message.content.strip()
-        if "1." in output and "2." in output:
-            parts = output.split("2.")
-            summary = parts[0].replace("1.", "").strip()
-            shared_mantra = parts[1].strip()
-        else:
-            summary = output
-            shared_mantra = ""
-        result = DreamMachineOutput(summary=summary, mantra=shared_mantra, entry_count=len(entries))
-        db.add(result)
-        db.commit()
-        logger.info("[Dream Machine] Summary saved.")
+        from routers.we_dream import _run_dream_machine
+        result = _run_dream_machine(db)
+        logger.info(f"[Dream Machine] Done — {result.get('count', 0)} dreams woven.")
     except Exception as e:
         logger.error("[Dream Machine] Error occurred", exc_info=e)
     finally:
@@ -131,7 +94,10 @@ from utils.stillness_scheduler import check_and_notify_stillness
 try:
     scheduler = BackgroundScheduler()
  
-    # Stillness: check every minute for groups whose window opens in ~2 min
+    # Dream Machine: runs every night at 2am regardless of feature flags
+    scheduler.add_job(regenerate_dream_machine, "cron", hour=2)
+ 
+    # Stillness notifications: every minute
     scheduler.add_job(
         check_and_notify_stillness,
         "interval",
@@ -139,16 +105,9 @@ try:
         id="stillness_notifications",
     )
  
-    # Dream Machine: only if summary feature is on
-    if getattr(settings, "ENABLE_SUMMARY", False) and getattr(settings, "OPENAI_API_KEY", None):
-        scheduler.add_job(regenerate_dream_machine, "cron", hour=2)
-        logger.info("[Scheduler] Dream Machine job scheduled (2 AM).")
-    else:
-        logger.info("[Scheduler] Dream Machine disabled (summary off or no OPENAI_API_KEY).")
- 
     scheduler.start()
     atexit.register(lambda: scheduler.shutdown())
-    logger.info("[Scheduler] Started — stillness notifications active.")
+    logger.info("[Scheduler] Started — Dream Machine (2am) + Stillness notifications (every 1min).")
  
 except Exception as e:
     logger.error("[Scheduler] Failed to start: %s", e)
