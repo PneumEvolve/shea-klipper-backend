@@ -11,6 +11,8 @@ load_dotenv(os.path.join(_here, '..', '.env'))
 from sqlalchemy import text
 from database import SessionLocal
 from utils.email import send_email
+from utils.sms import send_sms
+from routers.stillness import make_unsubscribe_token
  
 logger = logging.getLogger(__name__)
  
@@ -18,15 +20,14 @@ NOTIFY_SECONDS_BEFORE = 120  # 2 minutes before window
 WINDOW_SECONDS = 300          # must match stillness.py
  
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://pneumevolve.com")
-# Unsubscribe hits the API directly since the backend serves the confirmation HTML page
 API_URL = os.getenv("API_URL", "https://api.pneumevolve.com")
  
  
 def check_and_notify_stillness():
     """
     Called by APScheduler every minute.
-    Sends one email per user per group per day, ~2 minutes before their window.
-    Respects unsubscribe prefs and skips users who opted out.
+    Sends email and/or SMS to each member ~2 minutes before their window opens.
+    Respects unsubscribe prefs. Never double-sends on the same day.
     """
     db = SessionLocal()
     try:
@@ -57,9 +58,10 @@ def check_and_notify_stillness():
             group_id = group["id"]
             group_name = group["name"]
  
+            # Fetch members with email and phone
             members = db.execute(
                 text("""
-                    SELECT u.id, u.email, u.username
+                    SELECT u.id, u.email, u.username, u.phone_number
                     FROM stillness_members m
                     JOIN users u ON u.id = m.user_id
                     WHERE m.group_id = :g
@@ -71,8 +73,10 @@ def check_and_notify_stillness():
                 user_id = member["id"]
                 email = member["email"]
                 username = member["username"] or "there"
+                phone = member["phone_number"]
+                print(f"DEBUG member: {email}, phone: {phone}")
  
-                # Check unsubscribe pref — skip if opted out
+                # Check unsubscribe pref
                 pref = db.execute(
                     text("""
                         SELECT email_enabled FROM stillness_notification_prefs
@@ -82,7 +86,7 @@ def check_and_notify_stillness():
                 ).first()
  
                 if pref and not pref[0]:
-                    logger.info(f"[stillness] skipping {email} for '{group_name}' (unsubscribed)")
+                    logger.info(f"[stillness] skipping {email} (unsubscribed)")
                     continue
  
                 # Check if already notified today
@@ -97,42 +101,70 @@ def check_and_notify_stillness():
                 if already_sent:
                     continue
  
-                # Generate unsubscribe token
-                from routers.stillness import make_unsubscribe_token
+                # Generate unsubscribe token for email
+                
                 unsub_token = make_unsubscribe_token(user_id, group_id)
                 unsub_url = f"{API_URL}/stillness/unsubscribe?token={unsub_token}"
  
+                email_sent = False
+                sms_sent = False
+ 
+                # Send email
                 try:
                     send_email(
                         to_email=email,
                         subject=f"Your stillness moment is starting — {group_name}",
                         body=_build_email(username, group_name, seconds_until_open, unsub_url),
                     )
- 
-                    db.execute(
-                        text("""
-                            INSERT INTO stillness_notifications_sent
-                                (group_id, user_id, sent_for_date)
-                            VALUES (:g, :u, :d)
-                            ON CONFLICT (group_id, user_id, sent_for_date) DO NOTHING
-                        """),
-                        {"g": group_id, "u": user_id, "d": today},
-                    )
-                    db.commit()
- 
-                    logger.info(
-                        f"[stillness] emailed {email} for '{group_name}' "
-                        f"(window opens in {int(seconds_until_open)}s)"
-                    )
- 
+                    email_sent = True
+                    logger.info(f"[stillness] emailed {email} for '{group_name}'")
                 except Exception as e:
-                    logger.error(f"[stillness] failed to email {email}: {e}")
-                    db.rollback()
+                    logger.error(f"[stillness] email failed for {email}: {e}")
+ 
+                # Send SMS if they have a phone number
+                if phone:
+                    try:
+                        send_sms(
+                            to_number=phone,
+                            body=_build_sms(group_name, seconds_until_open),
+                        )
+                        sms_sent = True
+                        logger.info(f"[stillness] SMS sent to {phone} for '{group_name}'")
+                    except Exception as e:
+                        logger.error(f"[stillness] SMS failed for {phone}: {e}")
+                        print(f"DEBUG: email_sent={email_sent}, sms_sent={sms_sent}, phone={phone}")
+ 
+                # Record as notified if at least one channel succeeded
+                if email_sent or sms_sent:
+                    try:
+                        db.execute(
+                            text("""
+                                INSERT INTO stillness_notifications_sent
+                                    (group_id, user_id, sent_for_date)
+                                VALUES (:g, :u, :d)
+                                ON CONFLICT (group_id, user_id, sent_for_date) DO NOTHING
+                            """),
+                            {"g": group_id, "u": user_id, "d": today},
+                        )
+                        db.commit()
+                    except Exception as e:
+                        logger.error(f"[stillness] failed to record notification: {e}")
+                        db.rollback()
  
     except Exception as e:
         logger.error(f"[stillness scheduler] unexpected error: {e}")
+        raise
     finally:
         db.close()
+ 
+ 
+def _build_sms(group_name: str, seconds_until: float) -> str:
+    minutes = max(1, int(seconds_until // 60))
+    when = "now" if minutes < 2 else f"in {minutes} min"
+    return (
+        f"Your stillness moment with {group_name} is starting {when}. "
+        f"Open the app and tap the circle. {FRONTEND_URL}/stillness"
+    )
  
  
 def _build_email(username: str, group_name: str, seconds_until: float, unsub_url: str) -> str:

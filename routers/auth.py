@@ -596,3 +596,41 @@ def upload_profile_pic(
     db.commit()
 
     return {"profile_pic": public_url}
+
+# Add this schema class near your other BaseModel classes in auth.py
+ 
+class PhoneNumberUpdate(BaseModel):
+    phone_number: Optional[str] = None  # null = remove it
+ 
+ 
+# Add this route near your other /account routes in auth.py
+ 
+@router.put("/account/phone")
+def update_phone_number(
+    payload: PhoneNumberUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_model),
+):
+    """Save or remove a phone number for SMS notifications."""
+    number = (payload.phone_number or "").strip() or None
+ 
+    # Basic sanity check — must be digits/+/spaces/dashes only
+    if number:
+        import re
+        cleaned = re.sub(r"[\s\-\(\)]", "", number)
+        if not re.match(r"^\+?[0-9]{7,15}$", cleaned):
+            raise HTTPException(status_code=400, detail="Invalid phone number format")
+        number = cleaned  # store the cleaned version
+ 
+    current_user.phone_number = number
+    db.commit()
+    db.refresh(current_user)
+    return {"phone_number": current_user.phone_number}
+ 
+ 
+@router.get("/account/phone")
+def get_phone_number(
+    current_user: User = Depends(get_current_user_model),
+):
+    """Get the current user's phone number."""
+    return {"phone_number": current_user.phone_number}

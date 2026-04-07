@@ -30,9 +30,11 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     username = Column(String, unique=True, nullable=True)
+    phone_number = Column(String(20), nullable=True)
     has_active_payment = Column(Boolean, default=False)
     api_balance_dollars = Column(Float, default=0.0)
     profile_pic = Column(String, nullable=True)
+
 
     accepted_terms = Column(
     Boolean, nullable=False,

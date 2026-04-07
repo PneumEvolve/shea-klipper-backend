@@ -323,6 +323,60 @@ def leave_group(
         {"g": group_id, "u": user.id},
     )
     db.commit()
+
+class GroupUpdate(BaseModel):
+    daily_time_utc: str = Field(..., description="UTC time string e.g. '08:00'")
+
+@router.patch("/groups/{group_id}", response_model=GroupOut)
+def update_group_time(
+    group_id: int,
+    body: GroupUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_dependency),
+):
+    group = _get_group_or_404(group_id, db)
+    if group["created_by"] != user.id:
+        raise HTTPException(status_code=403, detail="Only the owner can change the time")
+
+    try:
+        parsed_time = time.fromisoformat(body.daily_time_utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid time format. Use HH:MM")
+
+    updated = db.execute(
+        text("""
+            UPDATE stillness_groups
+            SET daily_time_utc = :t
+            WHERE id = :id
+            RETURNING *
+        """),
+        {"t": parsed_time, "id": group_id},
+    ).mappings().first()
+
+    # Clear today's sent records so everyone gets notified at the new time
+    db.execute(
+        text("""
+            DELETE FROM stillness_notifications_sent
+            WHERE group_id = :g AND sent_for_date = CURRENT_DATE
+        """),
+        {"g": group_id},
+    )
+    db.commit()
+
+    member_count = db.execute(
+        text("SELECT COUNT(*) FROM stillness_members WHERE group_id = :g"),
+        {"g": group_id},
+    ).scalar()
+
+    t = updated["daily_time_utc"]
+    daily_time_str = t.strftime("%H:%M") if t and not isinstance(t, str) else t
+
+    return {
+        **dict(updated),
+        "is_owner": True,
+        "member_count": member_count,
+        "daily_time_utc": daily_time_str,
+    }
  
  
 @router.get("/groups/{group_id}/session", response_model=SessionOut)
