@@ -480,7 +480,7 @@ def request_password_reset(request_data: PasswordResetRequest, db: Session = Dep
 
     reset_token = create_password_reset_token(user.email)
     frontend_url = os.getenv("FRONTEND_URL", "https://sheas-app.netlify.app")
-    reset_link = f"{frontend_url}/resetpassword?token={reset_token}"
+    reset_link = f"{frontend_url}/reset-password?token={reset_token}"
     send_email(
         to_email=user.email,
         subject="Reset your password",
