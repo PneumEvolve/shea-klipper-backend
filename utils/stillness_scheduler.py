@@ -79,15 +79,14 @@ def check_and_notify_stillness():
                 # Check unsubscribe pref
                 pref = db.execute(
                     text("""
-                        SELECT email_enabled FROM stillness_notification_prefs
+                        SELECT email_enabled, sms_enabled FROM stillness_notification_prefs
                         WHERE user_id = :u AND group_id = :g
                     """),
                     {"u": user_id, "g": group_id},
-                ).first()
- 
-                if pref and not pref[0]:
-                    logger.info(f"[stillness] skipping {email} (unsubscribed)")
-                    continue
+                ).mappings().first()
+
+                email_enabled = pref["email_enabled"] if pref else True
+                sms_enabled = pref["sms_enabled"] if pref else True
  
                 # Check if already notified today
                 already_sent = db.execute(
@@ -109,31 +108,32 @@ def check_and_notify_stillness():
                 email_sent = False
                 sms_sent = False
  
-                # Send email
-                try:
-                    send_email(
-                        to_email=email,
-                        subject=f"Your stillness moment is starting — {group_name}",
-                        body=_build_email(username, group_name, seconds_until_open, unsub_url),
-                    )
-                    email_sent = True
-                    logger.info(f"[stillness] emailed {email} for '{group_name}'")
-                except Exception as e:
-                    logger.error(f"[stillness] email failed for {email}: {e}")
- 
-                # Send SMS if they have a phone number
-                if phone:
+               # Send email
+                if email_enabled:
                     try:
-                        sms_sent = send_sms(  # ← capture the return value
+                        send_email(
+                            to_email=email,
+                            subject=f"Your stillness moment is starting — {group_name}",
+                            body=_build_email(username, group_name, seconds_until_open, unsub_url),
+                     )
+                        email_sent = True
+                        logger.info(f"[stillness] emailed {email} for '{group_name}'")
+                    except Exception as e:
+                        logger.error(f"[stillness] email failed for {email}: {e}")
+
+                # Send SMS
+                if phone and sms_enabled:
+                    try:
+                        sms_sent = send_sms(
                             to_number=phone,
                             body=_build_sms(group_name, seconds_until_open),
                         )
                         if sms_sent:
                             logger.info(f"[stillness] SMS sent to {phone} for '{group_name}'")
                         else:
-                            logger.warning(f"[stillness] SMS skipped for {phone} — credentials missing or send returned False")
+                            logger.warning(f"[stillness] SMS skipped for {phone}")
                     except Exception as e:
-                            logger.error(f"[stillness] SMS failed for {phone}: {e}")
+                        logger.error(f"[stillness] SMS failed for {phone}: {e}")
  
                 # Record as notified if at least one channel succeeded
                 if email_sent or sms_sent:

@@ -355,6 +355,7 @@ class Project(Base):
     name = Column(String, nullable=False)
     description = Column(Text, default="")
     links = Column(ARRAY(Text), default=[])
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     tasks = relationship("ProjectTask", back_populates="project", cascade="all, delete-orphan")
     community = relationship("Community", back_populates="user_projects")

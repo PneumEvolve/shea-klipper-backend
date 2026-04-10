@@ -22,6 +22,7 @@ class UserCreate(BaseModel):
     recaptcha_token: Optional[str] = None   # ← optional in dev
     accept_terms: bool
     terms_version: str
+    phone_number: Optional[str] = None
 
 class Token(BaseModel):
     access_token: str
@@ -237,6 +238,7 @@ class ProjectCreate(ProjectBase):
 class Project(ProjectBase):
     id: UUID
     tasks: List[ProjectTask]
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

@@ -568,3 +568,64 @@ def _unsubscribe_page(success: bool, group_name: str = "") -> str:
     </body>
     </html>
     """
+
+# ─── Notification prefs ───────────────────────────────────────────────────────
+
+class NotifPref(BaseModel):
+    group_id: int
+    group_name: str
+    email_enabled: bool
+    sms_enabled: bool
+
+class NotifPrefUpdate(BaseModel):
+    email_enabled: bool
+    sms_enabled: bool
+
+
+@router.get("/notification-prefs", response_model=list[NotifPref])
+def get_notification_prefs(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_dependency),
+):
+    rows = db.execute(
+        text("""
+            SELECT
+                g.id AS group_id,
+                g.name AS group_name,
+                COALESCE(p.email_enabled, true) AS email_enabled,
+                COALESCE(p.sms_enabled, true) AS sms_enabled
+            FROM stillness_members m
+            JOIN stillness_groups g ON g.id = m.group_id
+            LEFT JOIN stillness_notification_prefs p
+                ON p.group_id = g.id AND p.user_id = :uid
+            WHERE m.user_id = :uid
+            ORDER BY g.created_at DESC
+        """),
+        {"uid": user.id},
+    ).mappings().all()
+    return [dict(r) for r in rows]
+
+
+@router.put("/notification-prefs/{group_id}", status_code=200)
+def set_notification_pref(
+    group_id: int,
+    body: NotifPrefUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_dependency),
+):
+    _assert_member(group_id, user.id, db)
+    db.execute(
+        text("""
+            INSERT INTO stillness_notification_prefs
+                (user_id, group_id, email_enabled, sms_enabled)
+            VALUES (:u, :g, :e, :s)
+            ON CONFLICT (user_id, group_id)
+            DO UPDATE SET
+                email_enabled = :e,
+                sms_enabled = :s,
+                updated_at = now()
+        """),
+        {"u": user.id, "g": group_id, "e": body.email_enabled, "s": body.sms_enabled},
+    )
+    db.commit()
+    return {"ok": True}

@@ -254,6 +254,7 @@ def signup(user_data: UserCreate, db: Session = Depends(get_db)):
             email=email,
             username=username_norm,
             hashed_password=hash_password(user_data.password),
+            phone_number=(user_data.phone_number or "").strip() or None,
         )
         _accept_terms_core(new_user, user_data.terms_version)
 
@@ -634,3 +635,48 @@ def get_phone_number(
 ):
     """Get the current user's phone number."""
     return {"phone_number": current_user.phone_number}
+
+class DeleteAccountPayload(BaseModel):
+    confirmation: str  # must equal "DELETE"
+    delete_forge_posts: bool = True  # True = delete posts, False = anonymize
+
+
+@router.delete("/account/delete")
+def delete_account(
+    payload: DeleteAccountPayload,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_model),
+):
+    if payload.confirmation != "DELETE":
+        raise HTTPException(status_code=400, detail="Type DELETE to confirm")
+
+    if payload.delete_forge_posts:
+        # Hard delete forge posts
+        db.execute(
+            text("DELETE FROM forge_items WHERE created_by_user_id = :uid"),
+            {"uid": current_user.id},
+        )
+        db.commit()
+    else:
+        # Anonymize — clear both the user reference and the email
+        db.execute(
+            text("""
+                UPDATE forge_items 
+                SET created_by_user_id = NULL,
+                    created_by_email = 'deleted user'
+                WHERE created_by_user_id = :uid
+            """),
+            {"uid": current_user.id},
+        )
+        db.commit()
+
+    # Delete the user — cascades handle everything else
+    db.delete(current_user)
+    db.commit()
+
+    # Clear auth cookies
+    clear_cookie(response, "access_token")
+    clear_cookie(response, "refresh_token")
+
+    return {"ok": True}
