@@ -114,7 +114,7 @@ def check_and_notify_stillness():
                         send_email(
                             to_email=email,
                             subject=f"Your stillness moment is starting — {group_name}",
-                            body=_build_email(username, group_name, seconds_until_open, unsub_url),
+                            body=_build_email(username, group_name, seconds_until_open, unsub_url, group_id),
                      )
                         email_sent = True
                         logger.info(f"[stillness] emailed {email} for '{group_name}'")
@@ -126,7 +126,7 @@ def check_and_notify_stillness():
                     try:
                         sms_sent = send_sms(
                             to_number=phone,
-                            body=_build_sms(group_name, seconds_until_open),
+                            body=_build_sms(group_name, seconds_until_open, group_id),
                         )
                         if sms_sent:
                             logger.info(f"[stillness] SMS sent to {phone} for '{group_name}'")
@@ -159,16 +159,16 @@ def check_and_notify_stillness():
         db.close()
  
  
-def _build_sms(group_name: str, seconds_until: float) -> str:
+def _build_sms(group_name: str, seconds_until: float, group_id: int) -> str:
     minutes = max(1, int(seconds_until // 60))
     when = "now" if minutes < 2 else f"in {minutes} min"
     return (
         f"Your stillness moment with {group_name} is starting {when}. "
-        f"Open the app and tap the circle. {FRONTEND_URL}/stillness"
+        f"Open the app and tap the circle. {FRONTEND_URL}/stillness/{group_id}"
     )
  
  
-def _build_email(username: str, group_name: str, seconds_until: float, unsub_url: str) -> str:
+def _build_email(username: str, group_name: str, seconds_until: float, unsub_url: str, group_id: int) -> str:
     minutes = max(1, int(seconds_until // 60))
     when = "right now" if minutes < 2 else f"in about {minutes} minutes"
  
@@ -189,7 +189,7 @@ def _build_email(username: str, group_name: str, seconds_until: float, unsub_url
         You have five minutes. No pressure if you miss it.
       </p>
  
-      <a href="https://pneumevolve.com/stillness"
+      <a href="{FRONTEND_URL}/stillness/{group_id}"
          style="display: inline-block; padding: 0.75rem 1.5rem;
                 background: #f5f0e8; border: 1px solid #d4c9b0;
                 border-radius: 8px; text-decoration: none;
