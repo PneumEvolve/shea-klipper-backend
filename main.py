@@ -64,6 +64,7 @@ from routers import (
     forge,
     preforge,
     contact,
+    rootwork,
 )
  
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -214,3 +215,4 @@ app.include_router(seed_router.router)
 app.include_router(preforge.router)
 app.include_router(stillness_router, prefix="/stillness", tags=["stillness"])
 app.include_router(contact.router)
+app.include_router(rootwork.router)
