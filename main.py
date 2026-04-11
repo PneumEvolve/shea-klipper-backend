@@ -63,6 +63,7 @@ from routers import (
     problems,
     forge,
     preforge,
+    contact,
 )
  
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -212,3 +213,4 @@ app.include_router(forge.router)
 app.include_router(seed_router.router)
 app.include_router(preforge.router)
 app.include_router(stillness_router, prefix="/stillness", tags=["stillness"])
+app.include_router(contact.router)

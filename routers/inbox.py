@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session, selectinload
 from typing import Optional, List
 from sqlalchemy import func, distinct
 
-from models import Problem, Solution, InboxMessage, Conversation, ConversationUser, User, ForgeItem, Problem, Solution, ForgeIdea as IdeaModel
+from models import Problem, Solution, InboxMessage, Conversation, ConversationUser, User, ForgeItem
 from database import get_db
-from models import ForgeIdea as IdeaModel
+
 
 import re
 
@@ -43,7 +43,7 @@ class FeedbackIn(BaseModel):
 # ========= Helpers =========
 
 def get_idea_title(db: Session, idea_id: int) -> str:
-    row = db.query(IdeaModel).filter(IdeaModel.id == idea_id).first()
+    row = db.query(ForgeItem).filter(ForgeItem.id == idea_id).first()
     return (row.title or f"Idea #{idea_id}") if row else f"Idea #{idea_id}"
 
 def get_user_by_email(db: Session, email: str) -> User:
@@ -535,44 +535,13 @@ def conversation_summaries(user_email: str, db: Session = Depends(get_db)):
         return kind, parsed_id, after
 
     def title_for_item_or_legacy(thing_id: Optional[int], slug: str,
-                                 convo_created_at: Optional[datetime],
-                                 last_ts: Optional[datetime]) -> str:
-        """
-        Prefer ForgeItem; but if both ForgeItem and legacy ForgeIdea exist with same id,
-        choose the one whose created_at is closer to the conversation creation (or last message) time.
-        """
-        ref_time = convo_created_at or last_ts
-
+                             convo_created_at: Optional[datetime],
+                             last_ts: Optional[datetime]) -> str:
         if thing_id is not None:
             item = db.query(ForgeItem).filter(ForgeItem.id == thing_id).first()
-            legacy = db.query(IdeaModel).filter(IdeaModel.id == thing_id).first()
-
-            # Only one exists → use it
-            if item and not legacy:
+            if item:
                 return item.title or f"Idea #{thing_id}"
-            if legacy and not item:
-                return legacy.title or f"Idea #{thing_id}"
-
-            # Both exist → pick by proximity to ref_time
-            if item and legacy:
-                if ref_time:
-                    item_dt = getattr(item, "created_at", None)
-                    legacy_dt = getattr(legacy, "created_at", None)
-                    # default far past if missing timestamps, so we don't falsely prefer one
-                    far = datetime(1970, 1, 1)
-                    item_dt = item_dt or far
-                    legacy_dt = legacy_dt or far
-                    if abs(item_dt - ref_time) <= abs(legacy_dt - ref_time):
-                        return item.title or f"Idea #{thing_id}"
-                    else:
-                        return legacy.title or f"Idea #{thing_id}"
-                # No ref_time → prefer older (assume older = legacy)
-                return (legacy.title or f"Idea #{thing_id}")
-
-            # Neither exists → fall back to slug or “Idea #id”
             return unslug(slug) or f"Idea #{thing_id}"
-
-        # No id → slug or generic
         return unslug(slug) or "Idea"
 
     def title_for_problem(pid: Optional[int], slug: str) -> str:

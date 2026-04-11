@@ -62,7 +62,7 @@ class User(Base):
     resources = relationship("Resource", back_populates="user", cascade="all, delete")
     events = relationship("CommunityEvent", back_populates="user", cascade="all, delete")
     farm_game_state = relationship("FarmGameState", uselist=False, back_populates="user")
-    forge_workers = relationship("ForgeWorker", back_populates="user")
+
     
     
     inbox_messages = relationship("InboxMessage", back_populates="user")
@@ -561,23 +561,6 @@ class LivingPlanSection(Base):
     notes = Column(Text, default="")
     owner_email = Column(String, index=True)
 
-class ForgeIdea(Base):
-    __tablename__ = "forge_ideas"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, nullable=False)
-    description = Column(String, nullable=False)
-    status = Column(String, default="Idea")  # Idea, Planning, In Progress, Done
-    votes_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    user_email = Column(String, nullable=False)
-    user_username = Column(String, nullable=True)
-    notes = Column(Text, nullable=True)
-
-
-     # Reverse relationship to ForgeWorker
-    votes = relationship("ForgeVote", back_populates="idea", cascade="all, delete-orphan")
-    workers = relationship("ForgeWorker", back_populates="idea")
 
 class ItemKind(str, enum.Enum):
     problem = "problem"
@@ -625,22 +608,7 @@ class ForgeItem(Base):
     created_by_user = relationship("User")
 
 
-class ForgeVote(Base):
-    __tablename__ = "forge_votes"
 
-    id = Column(Integer, primary_key=True)
-    idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"), index=True, nullable=False)
-    user_email = Column(String, index=True, nullable=False)  # real email OR "anon:{uuid}"
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    idea = relationship("ForgeIdea", back_populates="votes")
-
-    __table_args__ = (
-        UniqueConstraint("idea_id", "user_email", name="uq_vote_one_per_identity"),
-    )
-
-    def __repr__(self):
-        return f"<ForgeVote(idea_id={self.idea_id}, user_email={self.user_email})>"
     
 class ForgeItemVote(Base):
     __tablename__ = "forge_item_votes"
@@ -676,20 +644,6 @@ class ForgePledge(Base):
     item = relationship("ForgeItem")
     user = relationship("User")
 
-class ForgeWorker(Base):
-    __tablename__ = "forge_workers"
-    id = Column(Integer, primary_key=True)
-    user_email = Column(String, index=True)
-    idea_id = Column(Integer, ForeignKey("forge_ideas.id", ondelete="CASCADE"))
-    
-    # ForeignKey to User model
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))  # Link to the User table
-
-    # Relationship to User
-    user = relationship("User", back_populates="forge_workers")  # Ensure 'forge_workers' exists on User model
-
-    # Relationship to ForgeIdea
-    idea = relationship("ForgeIdea", back_populates="workers")  # Ensure 'workers' exists on ForgeIdea model
 
 class Problem(Base):
     __tablename__ = "problems"
