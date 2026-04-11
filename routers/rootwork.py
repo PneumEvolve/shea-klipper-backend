@@ -29,7 +29,7 @@ def get_rootwork_state(
     """Load the player's saved RootWork game state."""
     row = db.execute(
         text("SELECT data FROM rootwork_states WHERE user_id = :uid"),
-        {"uid": current_user.id},
+        {"uid": current_user["id"]},
     ).first()
  
     if not row:
@@ -57,7 +57,7 @@ def save_rootwork_state(
             ON CONFLICT (user_id)
             DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
         """),
-        {"uid": current_user.id, "data": payload.data},
+        {"uid": current_user["id"], "data": payload.data},
     )
     db.commit()
  
