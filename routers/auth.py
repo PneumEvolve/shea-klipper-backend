@@ -131,22 +131,30 @@ def set_http_only_cookie(
     key: str,
     value: str,
     max_age: int,
-    domain: str | None = ".pneumevolve.com",  # <-- set to your apex
+    domain: str | None = None,  # removed hardcoded .pneumevolve.com
 ) -> None:
     prod = _is_prod_env()
     response.set_cookie(
         key=key,
         value=value,
         httponly=True,
-        secure=prod,                   # prod must be HTTPS
-        samesite="none" if prod else "lax",  # <-- lowercase "none"
-        domain=domain if prod else None,     # only set domain in prod
+        secure=prod,
+        samesite="none" if prod else "lax",
+        domain=None,  # let browser scope to api.pneumevolve.com naturally
         path="/",
         max_age=max_age,
     )
 
 def clear_cookie(response: Response, key: str) -> None:
-    response.delete_cookie(key, path="/")
+    prod = _is_prod_env()
+    response.delete_cookie(
+        key,
+        path="/",
+        domain=None,
+        samesite="none" if prod else "lax",
+        secure=prod,
+        httponly=True,
+    )
 
 def _accept_terms_core(user: User, version: str, accepted_at: datetime | None = None):
     if version != CURRENT_TERMS_VERSION:

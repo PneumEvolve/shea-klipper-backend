@@ -16,7 +16,7 @@ from routers.stillness import make_unsubscribe_token
  
 logger = logging.getLogger(__name__)
  
-NOTIFY_SECONDS_BEFORE = 120  # 2 minutes before window
+NOTIFY_SECONDS_BEFORE = 60  # 2 minutes before window
 WINDOW_SECONDS = 300          # must match stillness.py
  
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://pneumevolve.com")

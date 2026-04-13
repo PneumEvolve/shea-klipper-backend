@@ -900,3 +900,14 @@ class PreForgeTag(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_preforge_tag_user_name"),
     )
+
+class ThoughtPing(Base):
+    __tablename__ = "thought_pings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    recipient_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    sent_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    sender = relationship("User", foreign_keys=[sender_id])
+    recipient = relationship("User", foreign_keys=[recipient_id])
