@@ -17,9 +17,10 @@ router = APIRouter()
 # ─── Schemas ──────────────────────────────────────────────────────────────────
 
 class CravingIn(BaseModel):
-    intensity_before: int = Field(..., ge=1, le=10)
-    intensity_after:  int = Field(..., ge=0, le=10)
-    recorded_at:      Optional[datetime] = None  # client can supply; defaults to now
+    intensity_before:   int  = Field(..., ge=1, le=10)
+    intensity_after:    int  = Field(..., ge=0, le=10)
+    skipped_breathing:  bool = False
+    recorded_at:        Optional[datetime] = None  # client can supply; defaults to now
 
 
 class MeditationIn(BaseModel):
@@ -37,11 +38,12 @@ class SoberStartIn(BaseModel):
 
 
 class CravingOut(BaseModel):
-    id:               int
-    recorded_at:      datetime
-    intensity_before: int
-    intensity_after:  int
-    reduction:        int
+    id:                 int
+    recorded_at:        datetime
+    intensity_before:   int
+    intensity_after:    int
+    reduction:          int
+    skipped_breathing:  bool
 
     class Config:
         from_attributes = True
@@ -87,7 +89,7 @@ def sync(
 
     cravings = db.execute(
         text("""
-            SELECT id, recorded_at, intensity_before, intensity_after, reduction
+            SELECT id, recorded_at, intensity_before, intensity_after, reduction, skipped_breathing
             FROM cc_cravings
             WHERE user_id = :uid
             ORDER BY recorded_at DESC
@@ -135,9 +137,9 @@ def log_craving(
     row = db.execute(
         text("""
             INSERT INTO cc_cravings
-                (user_id, recorded_at, intensity_before, intensity_after, reduction)
-            VALUES (:uid, :ts, :before, :after, :reduction)
-            RETURNING id, recorded_at, intensity_before, intensity_after, reduction
+                (user_id, recorded_at, intensity_before, intensity_after, reduction, skipped_breathing)
+            VALUES (:uid, :ts, :before, :after, :reduction, :skipped)
+            RETURNING id, recorded_at, intensity_before, intensity_after, reduction, skipped_breathing
         """),
         {
             "uid":       user.id,
@@ -145,6 +147,7 @@ def log_craving(
             "before":    body.intensity_before,
             "after":     body.intensity_after,
             "reduction": reduction,
+            "skipped":   body.skipped_breathing,
         },
     ).mappings().first()
     db.commit()
