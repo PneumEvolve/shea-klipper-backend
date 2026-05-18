@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import FireflyRoom, User
+from models import FireflyRoom
 from routers.auth import get_current_user
 
 router = APIRouter()
@@ -70,18 +70,20 @@ class SaveScoreRequest(BaseModel):
 @router.post("/rooms")
 def create_room(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Create a new firefly room. The creator becomes player1.
     Returns the room with a join_code player2 can use.
     """
+    user_id = current_user["id"]
+
     join_code = _generate_join_code(db)
     map_seed = random.randint(1, 2**31 - 1)
 
     room = FireflyRoom(
         join_code=join_code,
-        player1_id=current_user.id,
+        player1_id=user_id,
         map_seed=map_seed,
         status="waiting",
     )
@@ -95,12 +97,14 @@ def create_room(
 def join_room(
     body: JoinRoomRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Join an existing room by join_code. The joiner becomes player2.
     """
+    user_id = current_user["id"]
     code = body.join_code.strip().upper()
+
     room = db.query(FireflyRoom).filter(
         FireflyRoom.join_code == code,
         FireflyRoom.status == "waiting",
@@ -109,10 +113,10 @@ def join_room(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found or already started")
 
-    if room.player1_id == current_user.id:
+    if room.player1_id == user_id:
         raise HTTPException(status_code=400, detail="You can't join your own room as player 2")
 
-    room.player2_id = current_user.id
+    room.player2_id = user_id
     room.status = "active"
     db.commit()
     db.refresh(room)
@@ -124,18 +128,20 @@ def save_score(
     room_id: int,
     body: SaveScoreRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Save the final score when the game ends.
     Only player1 or player2 of the room can call this.
     """
+    user_id = current_user["id"]
+
     room = db.query(FireflyRoom).filter(FireflyRoom.id == room_id).first()
 
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    if current_user.id not in (room.player1_id, room.player2_id):
+    if user_id not in (room.player1_id, room.player2_id):
         raise HTTPException(status_code=403, detail="Not a member of this room")
 
     room.final_score = body.final_score
