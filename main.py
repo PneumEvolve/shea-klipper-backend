@@ -66,6 +66,7 @@ from routers import (
     contact,
     rootwork,
     thoughts,
+    clear_and_calm,
 )
  
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -218,3 +219,4 @@ app.include_router(stillness_router, prefix="/stillness", tags=["stillness"])
 app.include_router(contact.router)
 app.include_router(rootwork.router)
 app.include_router(thoughts.router, prefix="/thoughts", tags=["Thoughts"])
+app.include_router(clear_and_calm.router, prefix="/clear-and-calm", tags=["Clear & Calm"])

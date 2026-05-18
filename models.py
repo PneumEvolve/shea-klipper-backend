@@ -911,3 +911,48 @@ class ThoughtPing(Base):
 
     sender = relationship("User", foreign_keys=[sender_id])
     recipient = relationship("User", foreign_keys=[recipient_id])
+
+# ─── Clear & Calm ─────────────────────────────────────────────────────────────
+
+class CCSoberStart(Base):
+    __tablename__ = "cc_sober_starts"
+
+    user_id    = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User")
+
+
+class CCCraving(Base):
+    __tablename__ = "cc_cravings"
+
+    id                = Column(Integer, primary_key=True, index=True)
+    user_id           = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    recorded_at       = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    intensity_before  = Column(Integer, nullable=False)
+    intensity_after   = Column(Integer, nullable=False)
+    reduction         = Column(Integer, nullable=False)  # computed: before - after
+
+    user = relationship("User")
+
+
+class CCMeditation(Base):
+    __tablename__ = "cc_meditations"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    user_id      = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    recorded_at  = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    duration_secs = Column(Integer, nullable=False)
+
+    user = relationship("User")
+
+
+class CCGaveIn(Base):
+    __tablename__ = "cc_gave_in"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)  # user-supplied timestamp
+
+    user = relationship("User")
