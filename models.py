@@ -974,3 +974,22 @@ class FireflyRoom(Base):
 
     player1 = relationship("User", foreign_keys=[player1_id])
     player2 = relationship("User", foreign_keys=[player2_id])
+
+# ─── Slalom Game ──────────────────────────────────────────────────────────────
+# Add this at the bottom of models.py (after FireflyRoom)
+ 
+class SlalomRoom(Base):
+    __tablename__ = "slalom_rooms"
+ 
+    id          = Column(Integer, primary_key=True, index=True)
+    join_code   = Column(String(8), nullable=False, unique=True, index=True)
+    player1_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    player2_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status      = Column(String(16), nullable=False, server_default="waiting")  # waiting | active | finished
+    final_gems  = Column(Integer, nullable=True)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ended_at    = Column(DateTime(timezone=True), nullable=True)
+ 
+    player1 = relationship("User", foreign_keys=[player1_id])
+    player2 = relationship("User", foreign_keys=[player2_id])
+ 
