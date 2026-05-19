@@ -93,6 +93,29 @@ def create_room(
     return _room_response(room)
 
 
+@router.get("/rooms/{room_id}")
+def get_room(
+    room_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Fetch a room by ID. Used by P1 to poll until P2 has joined.
+    Only members of the room can call this.
+    """
+    user_id = current_user["id"]
+
+    room = db.query(FireflyRoom).filter(FireflyRoom.id == room_id).first()
+
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    if user_id not in (room.player1_id, room.player2_id):
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    return _room_response(room)
+
+
 @router.post("/rooms/join")
 def join_room(
     body: JoinRoomRequest,
