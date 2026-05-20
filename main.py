@@ -69,6 +69,7 @@ from routers import (
     clear_and_calm,
     firefly,
     slalom,
+    stronghold,
 )
  
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -224,3 +225,4 @@ app.include_router(thoughts.router, prefix="/thoughts", tags=["Thoughts"])
 app.include_router(clear_and_calm.router, prefix="/clear-and-calm", tags=["Clear & Calm"])
 app.include_router(firefly.router, prefix="/firefly", tags=["Firefly"])
 app.include_router(slalom.router, prefix="/slalom", tags=["Slalom"])
+app.include_router(stronghold.router, prefix="/stronghold", tags=["stronghold"])
