@@ -70,6 +70,8 @@ from routers import (
     firefly,
     slalom,
     stronghold,
+    inkrun,
+    gametest,
 )
  
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -226,3 +228,5 @@ app.include_router(clear_and_calm.router, prefix="/clear-and-calm", tags=["Clear
 app.include_router(firefly.router, prefix="/firefly", tags=["Firefly"])
 app.include_router(slalom.router, prefix="/slalom", tags=["Slalom"])
 app.include_router(stronghold.router, prefix="/stronghold", tags=["stronghold"])
+app.include_router(inkrun.router, prefix="/inkrun", tags=["inkrun"])
+app.include_router(gametest.router, prefix="/game-test", tags=["Game Test"])
