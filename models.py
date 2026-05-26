@@ -1033,30 +1033,23 @@ class InkRunRoom(Base):
 
 
 # ─── Homestead Game ───────────────────────────────────────────────────────────
-# Add this to your models.py alongside InkRunRoom.
-#
-# Migration note: after adding this, run:
-#   alembic revision --autogenerate -m "add homestead_rooms"
-#   alembic upgrade head
-# (or whatever migration flow you use)
+
 
 class HomesteadRoom(Base):
     __tablename__ = "homestead_rooms"
-
+ 
     id          = Column(Integer, primary_key=True, index=True)
     join_code   = Column(String(8),  nullable=False, unique=True, index=True)
     player1_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     player2_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    status      = Column(String(16), nullable=False, server_default="waiting")  # waiting | active | finished
-
-    # Shared persistent world state — stored as JSON so no extra tables needed for MVP.
-    # chest_inventory: { wood: 0, stone: 0, sticks: 0, herbs: 0, leather: 0, meat: 0, silk: 0 }
-    # placed_objects:  [ { id, type, tx, ty, w, h, solid, interact, label, ... }, ... ]
+    status      = Column(String(16), nullable=False, server_default="waiting")
+ 
     chest_inventory = Column(JSON, nullable=False, server_default="{}")
     placed_objects  = Column(JSON, nullable=False, server_default="[]")
-
+    town_state      = Column(JSON, nullable=False, server_default="{}")  # ← NEW
+ 
     created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at  = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
+ 
     player1 = relationship("User", foreign_keys=[player1_id])
     player2 = relationship("User", foreign_keys=[player2_id])

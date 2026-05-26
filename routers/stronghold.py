@@ -6,13 +6,19 @@ import random
 import string
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models import StrongholdRoom
 from routers.auth import get_current_user
+
+from routers.ws_manager import RoomManager
+from routers.ws_auth import get_ws_user
+import json
+
+_manager = RoomManager("stronghold")
 
 router = APIRouter()
 
@@ -167,3 +173,36 @@ def save_score(
     db.commit()
     db.refresh(room)
     return _room_response(room)
+
+
+
+
+ 
+@router.websocket("/ws/{room_id}")
+async def stronghold_websocket(websocket: WebSocket, room_id: int):
+    user = await get_ws_user(websocket)
+    if not user:
+        return
+ 
+    room_key   = str(room_id)
+    user_id    = user["id"]
+    peer_count = await _manager.connect(room_key, websocket)
+ 
+    await websocket.send_text(json.dumps({
+        "event": "connected", "user_id": user_id, "peer_count": peer_count
+    }))
+ 
+    if peer_count == 2:
+        await _manager.relay(room_key, websocket, json.dumps({
+            "event": "partner_connected", "user_id": user_id
+        }))
+ 
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            await _manager.relay(room_key, websocket, raw)
+    except WebSocketDisconnect:
+        _manager.disconnect(room_key, websocket)
+        await _manager.relay(room_key, websocket, json.dumps({
+            "event": "partner_disconnected", "user_id": user_id
+        }))
