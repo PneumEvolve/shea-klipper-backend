@@ -1033,23 +1033,81 @@ class InkRunRoom(Base):
 
 
 # ─── Homestead Game ───────────────────────────────────────────────────────────
+# Replace the existing HomesteadRoom class and add HomesteadPlayerState below it.
+
+
+# ─── Homestead Game ───────────────────────────────────────────────────────────
+# Replace the existing HomesteadRoom class and add HomesteadPlayerState below it.
 
 
 class HomesteadRoom(Base):
     __tablename__ = "homestead_rooms"
- 
+
     id          = Column(Integer, primary_key=True, index=True)
     join_code   = Column(String(8),  nullable=False, unique=True, index=True)
     player1_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     player2_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     status      = Column(String(16), nullable=False, server_default="waiting")
- 
+
+    # ── Shared room state ──────────────────────────────────────────────────────
     chest_inventory = Column(JSON, nullable=False, server_default="{}")
     placed_objects  = Column(JSON, nullable=False, server_default="[]")
-    town_state      = Column(JSON, nullable=False, server_default="{}")  # ← NEW
- 
+    town_state      = Column(JSON, nullable=False, server_default="{}")
+
+    # ── Multi-save additions ───────────────────────────────────────────────────
+    name            = Column(String(64), nullable=False, server_default="My Homestead")
+    last_played_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
     created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at  = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
- 
+
     player1 = relationship("User", foreign_keys=[player1_id])
     player2 = relationship("User", foreign_keys=[player2_id])
+
+    player_states = relationship(
+        "HomesteadPlayerState",
+        back_populates="room",
+        cascade="all, delete-orphan",
+    )
+
+
+class HomesteadPlayerState(Base):
+    """Per-player, per-room state. Replaces the localStorage keys:
+       hearthroot_{role}_inventory / hotbar / hotbar_slots / equipment / character
+       hearthroot_farm / hearthroot_nodes
+    """
+    __tablename__ = "homestead_player_states"
+
+    id      = Column(Integer, primary_key=True, index=True)
+    room_id = Column(Integer, ForeignKey("homestead_rooms.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role    = Column(String(2), nullable=False)  # "p1" | "p2"
+
+    # ── Player inventory & gear ────────────────────────────────────────────────
+    inventory    = Column(JSON, nullable=False, server_default="{}")
+    hotbar       = Column(JSON, nullable=False, server_default="[]")
+    hotbar_slots = Column(Integer, nullable=False, server_default="5")
+    equipment    = Column(JSON, nullable=False, server_default='{"weapon":null,"armor":null,"accessory":null}')
+    character    = Column(JSON, nullable=False, server_default="{}")
+
+    # ── World state (room-specific, needs cross-device sync) ───────────────────
+    farm_plots  = Column(JSON, nullable=False, server_default="{}")
+    node_state  = Column(JSON, nullable=False, server_default="{}")
+
+    # ── Daily run gate ─────────────────────────────────────────────────────────
+    # The shared in-game day (HomesteadRoom.town_state.inGameDay) on which this
+    # player last started a run. -1 means "has never run". A run is burned on
+    # START (solo, co-op host, or co-op join). The client gate is open when
+    # last_run_day < inGameDay; sleeping advances inGameDay and re-opens it.
+    # Server default -1 backfills existing rows so every current player gets one
+    # fresh run on first load after deploy.
+    last_run_day = Column(Integer, nullable=False, server_default="-1")
+
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    room = relationship("HomesteadRoom", back_populates="player_states")
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("room_id", "user_id", name="uq_homestead_player_state"),
+    )
