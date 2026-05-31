@@ -73,6 +73,7 @@ from routers import (
     inkrun,
     gametest,
     homestead,
+    deadmiles,
 )
  
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -232,3 +233,4 @@ app.include_router(stronghold.router, prefix="/stronghold", tags=["stronghold"])
 app.include_router(inkrun.router, prefix="/inkrun", tags=["inkrun"])
 app.include_router(gametest.router, prefix="/game-test", tags=["Game Test"])
 app.include_router(homestead.router, prefix="/homestead", tags=["Homestead"])
+app.include_router(deadmiles.router, prefix="/deadmiles", tags=["deadmiles"])

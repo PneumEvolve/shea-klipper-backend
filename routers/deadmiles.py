@@ -1,0 +1,180 @@
+"""
+routers/deadmiles.py
+Endpoints for Dead Miles multiplayer co-op rooms.
+"""
+import random
+import string
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from database import SessionLocal
+from models import DeadMilesRoom
+from routers.auth import get_current_user
+from routers.ws_manager import RoomManager
+from routers.ws_auth import get_ws_user
+import json
+
+_manager = RoomManager("deadmiles")
+
+router = APIRouter()
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def _generate_join_code(db: Session) -> str:
+    for _ in range(20):
+        code = "".join(random.choices(string.ascii_uppercase, k=6))
+        exists = db.query(DeadMilesRoom).filter(
+            DeadMilesRoom.join_code == code,
+            DeadMilesRoom.status != "finished",
+        ).first()
+        if not exists:
+            return code
+    raise HTTPException(status_code=500, detail="Could not generate a unique join code")
+
+
+def _room_response(room: DeadMilesRoom) -> dict:
+    return {
+        "id":          room.id,
+        "join_code":   room.join_code,
+        "player1_id":  room.player1_id,
+        "player2_id":  room.player2_id,
+        "status":      room.status,
+        "map_seed":    room.map_seed,
+        "final_score": room.final_score,
+        "created_at":  room.created_at.isoformat() if room.created_at else None,
+        "ended_at":    room.ended_at.isoformat()   if room.ended_at   else None,
+    }
+
+
+class JoinRoomRequest(BaseModel):
+    join_code: str
+
+class SaveScoreRequest(BaseModel):
+    final_score: dict   # {dayssurvived, zombiesKilled, buildingsSearched, survivorsFound, survived}
+
+
+@router.post("/rooms")
+def create_room(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id   = current_user["id"]
+    join_code = _generate_join_code(db)
+    map_seed  = random.randint(1, 2**31 - 1)
+
+    room = DeadMilesRoom(
+        join_code=join_code,
+        player1_id=user_id,
+        map_seed=map_seed,
+        status="waiting",
+    )
+    db.add(room)
+    db.commit()
+    db.refresh(room)
+    return _room_response(room)
+
+
+@router.get("/rooms/{room_id}")
+def get_room(
+    room_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    room    = db.query(DeadMilesRoom).filter(DeadMilesRoom.id == room_id).first()
+
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if user_id not in (room.player1_id, room.player2_id):
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    return _room_response(room)
+
+
+@router.post("/rooms/join")
+def join_room(
+    body: JoinRoomRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    code    = body.join_code.strip().upper()
+
+    room = db.query(DeadMilesRoom).filter(
+        DeadMilesRoom.join_code == code,
+        DeadMilesRoom.status    == "waiting",
+    ).first()
+
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found or already started")
+    if room.player1_id == user_id:
+        raise HTTPException(status_code=400, detail="You can't join your own room as player 2")
+
+    room.player2_id = user_id
+    room.status     = "active"
+    db.commit()
+    db.refresh(room)
+    return _room_response(room)
+
+
+@router.patch("/rooms/{room_id}")
+def save_score(
+    room_id: int,
+    body: SaveScoreRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user["id"]
+    room    = db.query(DeadMilesRoom).filter(DeadMilesRoom.id == room_id).first()
+
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if user_id not in (room.player1_id, room.player2_id):
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    room.final_score = body.final_score
+    room.status      = "finished"
+    room.ended_at    = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(room)
+    return _room_response(room)
+
+
+@router.websocket("/ws/{room_id}")
+async def deadmiles_websocket(websocket: WebSocket, room_id: int):
+    user = await get_ws_user(websocket)
+    if not user:
+        return
+
+    room_key   = str(room_id)
+    user_id    = user["id"]
+    peer_count = await _manager.connect(room_key, websocket)
+
+    await websocket.send_text(json.dumps({
+        "event": "connected", "user_id": user_id, "peer_count": peer_count
+    }))
+
+    if peer_count == 2:
+        await _manager.relay(room_key, websocket, json.dumps({
+            "event": "partner_connected", "user_id": user_id
+        }))
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            await _manager.relay(room_key, websocket, raw)
+    except WebSocketDisconnect:
+        _manager.disconnect(room_key, websocket)
+        await _manager.relay(room_key, websocket, json.dumps({
+            "event": "partner_disconnected", "user_id": user_id
+        }))

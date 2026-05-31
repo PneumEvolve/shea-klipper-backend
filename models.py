@@ -1111,3 +1111,19 @@ class HomesteadPlayerState(Base):
     __table_args__ = (
         UniqueConstraint("room_id", "user_id", name="uq_homestead_player_state"),
     )
+
+class DeadMilesRoom(Base):
+    __tablename__ = "deadmiles_rooms"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    join_code   = Column(String(8), nullable=False, unique=True, index=True)
+    player1_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    player2_id  = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status      = Column(String(16), nullable=False, server_default="waiting")  # waiting | active | finished
+    map_seed    = Column(Integer, nullable=False)
+    final_score = Column(JSON, nullable=True)   # store the score object {dayssurvived, zombiesKilled, etc}
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ended_at    = Column(DateTime(timezone=True), nullable=True)
+
+    player1 = relationship("User", foreign_keys=[player1_id])
+    player2 = relationship("User", foreign_keys=[player2_id])
