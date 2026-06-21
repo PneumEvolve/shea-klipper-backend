@@ -1127,3 +1127,140 @@ class DeadMilesRoom(Base):
 
     player1 = relationship("User", foreign_keys=[player1_id])
     player2 = relationship("User", foreign_keys=[player2_id])
+
+
+# ─── HabitGrid ─────────────────────────────────────────────────────────────
+# Append these classes to models.py (e.g. after FarmGameState).
+# Uses the same client_id + per-user UniqueConstraint pattern as PreForgeTopic/
+# PreForgeItem, since the React component generates its own ids
+# (h${Date.now()}, g${Date.now()}, etc.) before it ever talks to the server.
+
+class HabitColor(Base):
+    __tablename__ = "habit_colors"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(String, nullable=False)  # e.g. "c1", "c2"
+    hex = Column(String(9), nullable=False)
+    label = Column(String, nullable=False, default="")
+    order_index = Column(Integer, nullable=False, server_default="0")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_id", name="uq_habit_color_user_client_id"),
+    )
+
+
+class Habit(Base):
+    __tablename__ = "habits"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(String, nullable=False)  # e.g. "h0", "h1731000000000"
+    name = Column(String, nullable=False)
+    order_index = Column(Integer, nullable=False, server_default="0")
+    archived = Column(Boolean, nullable=False, server_default="false")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+    marks = relationship("HabitMark", back_populates="habit", cascade="all, delete-orphan", passive_deletes=True)
+    habit_goals = relationship("HabitGoalLink", back_populates="habit", cascade="all, delete-orphan", passive_deletes=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_id", name="uq_habit_user_client_id"),
+    )
+
+
+class HabitMark(Base):
+    """One row per (habit, calendar day) that has ever been marked.
+    Clearing a mark deletes the row rather than storing a null color.
+    """
+    __tablename__ = "habit_marks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    habit_id = Column(Integer, ForeignKey("habits.id", ondelete="CASCADE"), nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    # Denormalized reference to HabitColor.client_id rather than a hard FK —
+    # colors are a small, rarely-deleted legend, and storing the client_id
+    # directly avoids an extra lookup/join on every single mark write.
+    color_client_id = Column(String, nullable=False)
+
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    habit = relationship("Habit", back_populates="marks")
+
+    __table_args__ = (
+        UniqueConstraint("habit_id", "date", name="uq_habit_mark_habit_date"),
+    )
+
+
+class Goal(Base):
+    __tablename__ = "goals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(String, nullable=False)  # e.g. "g1731000000000"
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=False, default="")
+    notes = Column(Text, nullable=True)
+    target_date = Column(Date, nullable=True)
+    advance_mode = Column(String(8), nullable=False, server_default="manual")  # 'auto' | 'manual'
+    current_stage_client_id = Column(String, nullable=True)  # only used in manual mode
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+    stages = relationship(
+        "GoalStage", back_populates="goal", cascade="all, delete-orphan",
+        passive_deletes=True, order_by="GoalStage.order_index.asc()",
+    )
+    habit_goals = relationship("HabitGoalLink", back_populates="goal", cascade="all, delete-orphan", passive_deletes=True)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_id", name="uq_goal_user_client_id"),
+    )
+
+
+class GoalStage(Base):
+    __tablename__ = "goal_stages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    goal_id = Column(Integer, ForeignKey("goals.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_id = Column(String, nullable=False)  # e.g. "s1731000000000"
+    label = Column(String, nullable=False)
+    criteria = Column(String, nullable=False, default="")
+    start_date = Column(Date, nullable=True)  # only meaningful when goal.advance_mode == 'auto'
+    order_index = Column(Integer, nullable=False, server_default="0")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    goal = relationship("Goal", back_populates="stages")
+
+    __table_args__ = (
+        UniqueConstraint("goal_id", "client_id", name="uq_goal_stage_goal_client_id"),
+    )
+
+
+class HabitGoalLink(Base):
+    """Join table for habitGoals: habitId -> Set of goalId."""
+    __tablename__ = "habit_goal_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    habit_id = Column(Integer, ForeignKey("habits.id", ondelete="CASCADE"), nullable=False, index=True)
+    goal_id = Column(Integer, ForeignKey("goals.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    habit = relationship("Habit", back_populates="habit_goals")
+    goal = relationship("Goal", back_populates="habit_goals")
+
+    __table_args__ = (
+        UniqueConstraint("habit_id", "goal_id", name="uq_habit_goal_link"),
+    )

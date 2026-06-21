@@ -500,3 +500,155 @@ class PreForgeSyncIn(BaseModel):
     topics: List[PreForgeSyncTopicIn] = Field(default_factory=list)
     deleted_topic_client_ids: List[str] = Field(default_factory=list)
     deleted_item_client_ids: List[str] = Field(default_factory=list)
+
+
+"""
+Pydantic schemas for HabitGrid persistence.
+Add this as schemas/habits.py (or append into schemas.py, matching your
+existing layout — auth.py imports from a top-level `schemas` module).
+"""
+
+from datetime import date as date_, datetime
+from typing import List, Optional, Literal
+from pydantic import BaseModel
+
+
+# ---------- Colors ----------
+
+class HabitColorIn(BaseModel):
+    client_id: str
+    hex: str
+    label: str = ""
+    order_index: int = 0
+
+
+class HabitColorUpdate(BaseModel):
+    hex: Optional[str] = None
+    label: Optional[str] = None
+    order_index: Optional[int] = None
+
+
+class HabitColorOut(BaseModel):
+    client_id: str
+    hex: str
+    label: str
+    order_index: int
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Habits ----------
+
+class HabitIn(BaseModel):
+    client_id: str
+    name: str
+    order_index: int = 0
+
+
+class HabitUpdate(BaseModel):
+    name: Optional[str] = None
+    order_index: Optional[int] = None
+    archived: Optional[bool] = None
+
+
+class HabitOut(BaseModel):
+    client_id: str
+    name: str
+    order_index: int
+    archived: bool
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Marks ----------
+
+class HabitMarkUpsert(BaseModel):
+    habit_client_id: str
+    date: date_
+    color_client_id: Optional[str] = None  # None = clear the mark
+
+
+class HabitMarkOut(BaseModel):
+    habit_client_id: str
+    date: date_
+    color_client_id: str
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Goals ----------
+
+class GoalIn(BaseModel):
+    client_id: str
+    title: str
+    description: str = ""
+    notes: Optional[str] = None
+    target_date: Optional[date_] = None
+
+
+class GoalUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    notes: Optional[str] = None
+    target_date: Optional[date_] = None
+    advance_mode: Optional[Literal["auto", "manual"]] = None
+    current_stage_client_id: Optional[str] = None
+
+
+class GoalStageIn(BaseModel):
+    client_id: str
+    label: str
+    criteria: str = ""
+    start_date: Optional[date_] = None
+    order_index: int = 0
+
+
+class GoalStageUpdate(BaseModel):
+    label: Optional[str] = None
+    criteria: Optional[str] = None
+    start_date: Optional[date_] = None
+    order_index: Optional[int] = None
+
+
+class GoalStageOut(BaseModel):
+    client_id: str
+    label: str
+    criteria: str
+    start_date: Optional[date_] = None
+    order_index: int
+
+    class Config:
+        from_attributes = True
+
+
+class GoalOut(BaseModel):
+    client_id: str
+    title: str
+    description: str
+    notes: Optional[str] = None
+    target_date: Optional[date_] = None
+    advance_mode: str
+    current_stage_client_id: Optional[str] = None
+    stages: List[GoalStageOut] = []
+ 
+    class Config:
+        from_attributes = True
+
+# ---------- Habit <-> Goal links ----------
+
+class HabitGoalLinkIn(BaseModel):
+    habit_client_id: str
+    goal_client_id: str
+
+
+# ---------- Bulk state (initial load) ----------
+
+class HabitGridState(BaseModel):
+    colors: List[HabitColorOut]
+    habits: List[HabitOut]
+    marks: List[HabitMarkOut]
+    goals: List[GoalOut]
+    habit_goals: List[HabitGoalLinkIn]  # flattened {habit_client_id, goal_client_id} pairs

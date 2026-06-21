@@ -74,7 +74,7 @@ def upgrade() -> None:
     op.alter_column('conversation_users', 'conversation_id',
                existing_type=sa.INTEGER(),
                nullable=False)
-    op.create_unique_constraint('uq_conv_user', 'conversation_users', ['user_id', 'conversation_id'])
+    
     op.drop_constraint('conversation_users_user_id_fkey', 'conversation_users', type_='foreignkey')
     op.drop_constraint('conversation_users_conversation_id_fkey', 'conversation_users', type_='foreignkey')
     op.create_foreign_key(None, 'conversation_users', 'users', ['user_id'], ['id'], ondelete='CASCADE')
@@ -139,19 +139,11 @@ def upgrade() -> None:
                existing_type=postgresql.TIMESTAMP(),
                server_default=None,
                nullable=True)
-    op.drop_index('ix_seed_events_event_type', table_name='seed_events')
-    op.drop_index('ix_seed_events_identity_created', table_name='seed_events')
-    op.create_index(op.f('ix_seed_events_created_at'), 'seed_events', ['created_at'], unique=False)
-    op.create_index(op.f('ix_seed_events_id'), 'seed_events', ['id'], unique=False)
-    op.create_index(op.f('ix_seed_events_identity'), 'seed_events', ['identity'], unique=False)
+    
+    
     op.create_index(op.f('ix_solution_notes_created_at'), 'solution_notes', ['created_at'], unique=False)
     op.create_index(op.f('ix_solution_notes_id'), 'solution_notes', ['id'], unique=False)
-    op.add_column('volunteer_applications', sa.Column('name', sa.String(), nullable=False))
-    op.add_column('volunteer_applications', sa.Column('email', sa.String(), nullable=False))
-    op.drop_column('volunteer_applications', 'status')
-    op.drop_column('volunteer_applications', 'created_at')
-    op.drop_column('volunteer_applications', 'volunteer_name')
-    op.drop_column('volunteer_applications', 'volunteer_email')
+    
     op.alter_column('volunteer_requests', 'status',
                existing_type=sa.VARCHAR(),
                server_default=None,
@@ -166,19 +158,11 @@ def downgrade() -> None:
                existing_type=sa.VARCHAR(),
                server_default=sa.text("'Pending'::text"),
                existing_nullable=True)
-    op.add_column('volunteer_applications', sa.Column('volunteer_email', sa.VARCHAR(), autoincrement=False, nullable=False))
-    op.add_column('volunteer_applications', sa.Column('volunteer_name', sa.VARCHAR(), autoincrement=False, nullable=False))
-    op.add_column('volunteer_applications', sa.Column('created_at', postgresql.TIMESTAMP(timezone=True), server_default=sa.text('now()'), autoincrement=False, nullable=True))
-    op.add_column('volunteer_applications', sa.Column('status', sa.VARCHAR(), server_default=sa.text("'Pending'::text"), autoincrement=False, nullable=True))
-    op.drop_column('volunteer_applications', 'email')
-    op.drop_column('volunteer_applications', 'name')
+    
     op.drop_index(op.f('ix_solution_notes_id'), table_name='solution_notes')
     op.drop_index(op.f('ix_solution_notes_created_at'), table_name='solution_notes')
-    op.drop_index(op.f('ix_seed_events_identity'), table_name='seed_events')
-    op.drop_index(op.f('ix_seed_events_id'), table_name='seed_events')
-    op.drop_index(op.f('ix_seed_events_created_at'), table_name='seed_events')
-    op.create_index('ix_seed_events_identity_created', 'seed_events', ['identity', sa.literal_column('created_at DESC')], unique=False)
-    op.create_index('ix_seed_events_event_type', 'seed_events', ['event_type'], unique=False)
+    
+    
     op.alter_column('seed_events', 'created_at',
                existing_type=postgresql.TIMESTAMP(),
                server_default=sa.text('now()'),
@@ -243,7 +227,7 @@ def downgrade() -> None:
     op.drop_constraint(None, 'conversation_users', type_='foreignkey')
     op.create_foreign_key('conversation_users_conversation_id_fkey', 'conversation_users', 'conversations', ['conversation_id'], ['id'])
     op.create_foreign_key('conversation_users_user_id_fkey', 'conversation_users', 'users', ['user_id'], ['id'])
-    op.drop_constraint('uq_conv_user', 'conversation_users', type_='unique')
+    
     op.alter_column('conversation_users', 'conversation_id',
                existing_type=sa.INTEGER(),
                nullable=True)

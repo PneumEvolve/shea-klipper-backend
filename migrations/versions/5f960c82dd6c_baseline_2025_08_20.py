@@ -126,7 +126,7 @@ def upgrade() -> None:
     sa.Column('conversation_id', sa.Integer(), nullable=True),
     sa.Column('votes_count', sa.Integer(), nullable=False),
     sa.Column('followers_count', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['accepted_solution_id'], ['solutions.id'], name='fk_problems_accepted_solution_id'),
+    
     sa.ForeignKeyConstraint(['conversation_id'], ['conversations.id'], ),
     sa.ForeignKeyConstraint(['duplicate_of_id'], ['problems.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -169,6 +169,11 @@ def upgrade() -> None:
     op.create_index(op.f('ix_solutions_problem_id'), 'solutions', ['problem_id'], unique=False)
     op.create_index(op.f('ix_solutions_status'), 'solutions', ['status'], unique=False)
     op.create_index(op.f('ix_solutions_title'), 'solutions', ['title'], unique=False)
+    op.create_foreign_key(
+    'fk_problems_accepted_solution_id',
+    'problems', 'solutions',
+    ['accepted_solution_id'], ['id'],
+)
     op.create_table('users',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('email', sa.String(), nullable=True),
@@ -703,6 +708,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_solutions_problem_id'), table_name='solutions')
     op.drop_index(op.f('ix_solutions_id'), table_name='solutions')
     op.drop_index(op.f('ix_solutions_created_at'), table_name='solutions')
+    op.drop_constraint('fk_problems_accepted_solution_id', 'problems', type_='foreignkey')
     op.drop_table('solutions')
     op.drop_index(op.f('ix_seed_events_identity'), table_name='seed_events')
     op.drop_index(op.f('ix_seed_events_id'), table_name='seed_events')
