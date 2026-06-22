@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON, Date, UniqueConstraint, text
+from sqlalchemy import Column, Integer, String, ForeignKey, Text, DateTime, Table, Boolean, Float, func, JSON, Date, UniqueConstraint, text, Index
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.ext.associationproxy import association_proxy
@@ -992,6 +992,57 @@ class SlalomRoom(Base):
  
     player1 = relationship("User", foreign_keys=[player1_id])
     player2 = relationship("User", foreign_keys=[player2_id])
+
+
+# ─── Slalom Leaderboard ────────────────────────────────────────────────────────
+# Add this to models.py, right after the existing SlalomRoom class.
+#
+# IMPORTANT: make sure `Index` is imported from sqlalchemy at the top of
+# models.py (add it to your existing `from sqlalchemy import ...` line if it
+# isn't there already).
+#
+# This is a separate table from SlalomRoom on purpose: SlalomRoom is live
+# matchmaking state (a room can be abandoned, expire, etc.), while
+# SlalomScore is permanent history that should survive a room being cleaned
+# up — hence ondelete="SET NULL" on room_id rather than a cascade delete.
+
+class SlalomScore(Base):
+    __tablename__ = "slalom_scores"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    mode          = Column(String(8), nullable=False)  # "solo" | "coop"
+
+    # Only set for coop — this is how the two independent submissions
+    # (one from each player's browser) get matched into a single row.
+    room_id       = Column(Integer, ForeignKey("slalom_rooms.id", ondelete="SET NULL"), nullable=True)
+
+    player1_id    = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    player1_name  = Column(String(32), nullable=False)
+
+    # Filled in once player 2 submits their half of a coop run. Stays NULL
+    # for solo rows, and can stay NULL for a while on coop rows if the
+    # partner hasn't submitted yet — the leaderboard read endpoint handles
+    # that "still pending" window, see routers/slalom.py.
+    player2_id    = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    player2_name  = Column(String(32), nullable=True)
+
+    gates_passed  = Column(Integer, nullable=False)
+    gems          = Column(Integer, nullable=False)
+    created_at    = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    player1 = relationship("User", foreign_keys=[player1_id])
+    player2 = relationship("User", foreign_keys=[player2_id])
+
+    __table_args__ = (
+        # Leaderboard reads always filter by mode and sort by gates_passed,
+        # gems — this index covers that query directly.
+        Index("ix_slalom_scores_rank", "mode", "gates_passed", "gems"),
+    )
+
+
+# Remember to actually create this table — run whatever migration step you
+# normally use (Alembic revision + upgrade, or Base.metadata.create_all if
+# you're not on migrations yet for this project).
  
 
  # ─── Stronghold Game ──────────────────────────────────────────────────────────
