@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, StringConstraints, constr
+from pydantic import BaseModel, EmailStr, Field, StringConstraints, ConfigDict, constr
 from typing import List, Optional, Annotated
 from datetime import datetime, date
 from uuid import UUID
@@ -652,3 +652,56 @@ class HabitGridState(BaseModel):
     marks: List[HabitMarkOut]
     goals: List[GoalOut]
     habit_goals: List[HabitGoalLinkIn]  # flattened {habit_client_id, goal_client_id} pairs
+
+# ---------- Door Sales ----------
+
+class NeighborhoodIn(BaseModel):
+    name: str
+
+
+class NeighborhoodOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str
+    created_at: datetime
+    house_count: int = 0  # populated manually in the route, not a DB column
+
+
+class DoorHouseIn(BaseModel):
+    address: str
+    status: str = "no_answer"
+    service_interest: Optional[str] = None
+    notes: Optional[str] = None
+    appointment_at: Optional[datetime] = None
+
+
+class DoorHouseUpdate(BaseModel):
+    address: Optional[str] = None
+    status: Optional[str] = None
+    service_interest: Optional[str] = None
+    notes: Optional[str] = None
+    appointment_at: Optional[datetime] = None
+    appointment_completed: Optional[bool] = None
+
+
+class DoorHouseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    neighborhood_id: int
+    address: str
+    status: str
+    service_interest: Optional[str] = None
+    notes: Optional[str] = None
+    appointment_at: Optional[datetime] = None
+    appointment_completed: bool
+    visited_at: datetime
+    updated_at: datetime
+
+
+class AppointmentOut(BaseModel):
+    house_id: int
+    neighborhood_id: int
+    neighborhood_name: str
+    address: str
+    status: str
+    appointment_at: datetime

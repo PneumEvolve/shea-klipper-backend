@@ -1315,3 +1315,56 @@ class HabitGoalLink(Base):
     __table_args__ = (
         UniqueConstraint("habit_id", "goal_id", name="uq_habit_goal_link"),
     )
+
+# ─── Door Sales Tracker ────────────────────────────────────────────────────
+
+class DoorHouseStatus(str, enum.Enum):
+    no_answer = "no_answer"
+    not_interested = "not_interested"
+    interested = "interested"
+    follow_up = "follow_up"
+    sold = "sold"
+
+
+class Neighborhood(Base):
+    __tablename__ = "door_neighborhoods"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String, nullable=False)  # "Aurora", "Summerside", etc.
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user = relationship("User")
+    houses = relationship(
+        "DoorHouse", back_populates="neighborhood",
+        cascade="all, delete-orphan", passive_deletes=True,
+        order_by="DoorHouse.visited_at.desc()",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_neighborhood_user_name"),
+    )
+
+
+class DoorHouse(Base):
+    __tablename__ = "door_houses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    neighborhood_id = Column(Integer, ForeignKey("door_neighborhoods.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    address = Column(String, nullable=False)
+    status = Column(SAEnum(DoorHouseStatus, name="door_house_status"), nullable=False, server_default="no_answer")
+    service_interest = Column(String, nullable=True)
+
+    notes = Column(Text, nullable=True)
+
+    appointment_at = Column(DateTime(timezone=True), nullable=True)
+    appointment_completed = Column(Boolean, nullable=False, server_default="false")
+
+    visited_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+    neighborhood = relationship("Neighborhood", back_populates="houses")
