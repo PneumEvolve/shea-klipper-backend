@@ -40,7 +40,7 @@ router = APIRouter()
 _manager = RoomManager("arcade")
 
 # Add a game's id here when you add it to the frontend registry.
-KNOWN_GAMES = {"blob-test", "blob-volley", "shared-garden", "creature-crashers"}
+KNOWN_GAMES = {"blob-test", "blob-volley", "shared-garden", "creature-crashers", "creature-farm", }
 
 MAX_ROOMS_PER_GAME = 3            # rooms a player can HOST per game (like Homestead's 3 saves)
 MAX_SAVE_BYTES     = 256_000      # plenty for unlocks/levels/XP; stops runaway blobs
