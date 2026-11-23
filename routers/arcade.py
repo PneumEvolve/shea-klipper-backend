@@ -1,7 +1,9 @@
 """
 Bash & Dad's Arcade — the shared multiplayer + save backbone for every arcade game.
 
-  • Rooms   are short-lived play sessions (one per sitting). Host = p1.
+  • Rooms   are saved to both players' accounts. Host (p1) makes one, shares the
+            4-letter code once, and after that both players just tap the room in
+            their list to jump back in. Host = p1.
   • Saves   belong to the user's ACCOUNT, per game — not to a room — so progress
             follows you to any device you sign in on.
   • The WebSocket is a dumb relay. It never looks inside game events, so adding
@@ -14,8 +16,8 @@ Mount in main.py:
 """
 import json
 import random
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -34,10 +36,10 @@ _manager = RoomManager("arcade")
 # Add a game's id here when you add it to the frontend registry.
 KNOWN_GAMES = {"blob-test", "creature-crashers"}
 
-MAX_SAVE_BYTES = 256_000          # plenty for unlocks/levels/XP; stops runaway blobs
-ROOM_TTL_HOURS = 12               # old open rooms can't be joined
-CODE_ALPHABET  = "ABCDEFGHJKMNPQRSTUVWXYZ"   # no I / L / O — easy to read off a screen
-CODE_LENGTH    = 4
+MAX_ROOMS_PER_GAME = 3            # rooms a player can HOST per game (like Homestead's 3 saves)
+MAX_SAVE_BYTES     = 256_000      # plenty for unlocks/levels/XP; stops runaway blobs
+CODE_ALPHABET      = "ABCDEFGHJKMNPQRSTUVWXYZ"   # no I / L / O — easy to read off a screen
+CODE_LENGTH        = 4
 
 
 def get_db():
@@ -57,20 +59,16 @@ def _check_game(game_id: str) -> None:
         raise HTTPException(status_code=404, detail="Unknown game")
 
 
-def _open_rooms(db: Session):
-    """Rooms that are still joinable / playable."""
-    cutoff = _now() - timedelta(hours=ROOM_TTL_HOURS)
-    return db.query(ArcadeRoom).filter(
-        ArcadeRoom.status != "finished",
-        ArcadeRoom.created_at >= cutoff,
-    )
+def _live_rooms(db: Session):
+    """Rooms that haven't been deleted."""
+    return db.query(ArcadeRoom).filter(ArcadeRoom.status != "finished")
 
 
 def _generate_join_code(db: Session) -> str:
-    # Codes only need to be unique among OPEN rooms, so they get reused over time.
+    # Codes only need to be unique among live rooms; deleted rooms free theirs up.
     for _ in range(30):
         code = "".join(random.choices(CODE_ALPHABET, k=CODE_LENGTH))
-        if not _open_rooms(db).filter(ArcadeRoom.join_code == code).first():
+        if not _live_rooms(db).filter(ArcadeRoom.join_code == code).first():
             return code
     raise HTTPException(status_code=500, detail="Could not generate a join code")
 
@@ -83,21 +81,33 @@ def _role_for(room: ArcadeRoom, user_id: int) -> str | None:
     return None
 
 
+def _display_name(user) -> Optional[str]:
+    if user is None:
+        return None
+    if getattr(user, "username", None):
+        return user.username
+    email = getattr(user, "email", None) or ""
+    return email.split("@")[0] or "player"
+
+
 def _room_response(room: ArcadeRoom, user_id: int) -> dict:
     return {
-        "id":         room.id,
-        "game_id":    room.game_id,
-        "join_code":  room.join_code,
-        "status":     room.status,
-        "player1_id": room.player1_id,
-        "player2_id": room.player2_id,
-        "role":       _role_for(room, user_id),
-        "created_at": room.created_at.isoformat() if room.created_at else None,
+        "id":           room.id,
+        "game_id":      room.game_id,
+        "join_code":    room.join_code,
+        "status":       room.status,
+        "player1_id":   room.player1_id,
+        "player2_id":   room.player2_id,
+        "player1_name": _display_name(room.player1),
+        "player2_name": _display_name(room.player2),
+        "role":         _role_for(room, user_id),
+        "created_at":   room.created_at.isoformat() if room.created_at else None,
+        "last_played_at": room.updated_at.isoformat() if room.updated_at else None,
     }
 
 
 def _get_room_for_member(room_id: int, user_id: int, db: Session) -> ArcadeRoom:
-    room = db.query(ArcadeRoom).filter(ArcadeRoom.id == room_id).first()
+    room = _live_rooms(db).filter(ArcadeRoom.id == room_id).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     if _role_for(room, user_id) is None:
@@ -118,6 +128,29 @@ class SaveRequest(BaseModel):
 
 
 # ─── Rooms ────────────────────────────────────────────────────────────────────
+# NOTE: /rooms/mine must stay above /rooms/{room_id} so "mine" isn't read as an id.
+
+@router.get("/rooms/mine")
+def my_rooms(
+    game_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Every live room this player is in for a game, most recently played first."""
+    _check_game(game_id)
+    user_id = current_user["id"]
+    rooms = (
+        _live_rooms(db)
+        .filter(
+            ArcadeRoom.game_id == game_id,
+            (ArcadeRoom.player1_id == user_id) | (ArcadeRoom.player2_id == user_id),
+        )
+        .order_by(ArcadeRoom.updated_at.desc())
+        .limit(20)
+        .all()
+    )
+    return [_room_response(r, user_id) for r in rooms]
+
 
 @router.post("/rooms")
 def create_room(
@@ -125,16 +158,19 @@ def create_room(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Start a play session. The caller becomes p1 (host)."""
+    """Make a room. The caller becomes p1 (host). It stays on both accounts until deleted."""
     _check_game(body.game_id)
     user_id = current_user["id"]
 
-    # Close any session this user left hanging for the same game.
-    db.query(ArcadeRoom).filter(
+    hosted = _live_rooms(db).filter(
         ArcadeRoom.player1_id == user_id,
         ArcadeRoom.game_id == body.game_id,
-        ArcadeRoom.status != "finished",
-    ).update({"status": "finished", "updated_at": _now()}, synchronize_session=False)
+    ).count()
+    if hosted >= MAX_ROOMS_PER_GAME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You can host up to {MAX_ROOMS_PER_GAME} rooms for this game. Delete one to make another.",
+        )
 
     room = ArcadeRoom(
         game_id=body.game_id,
@@ -154,17 +190,18 @@ def join_room(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    """First-time join with a code. After this the room shows in the player's list."""
     user_id = current_user["id"]
     code = body.join_code.strip().upper()
 
     room = (
-        _open_rooms(db)
+        _live_rooms(db)
         .filter(ArcadeRoom.join_code == code)
         .order_by(ArcadeRoom.created_at.desc())
         .first()
     )
     if not room:
-        raise HTTPException(status_code=404, detail="No open room with that code")
+        raise HTTPException(status_code=404, detail="No room with that code")
 
     if room.player1_id == user_id:
         # Same account on both devices would make both of them the host.
@@ -173,7 +210,7 @@ def join_room(
             detail="You're the host of this room. The other player needs to sign in with their own account.",
         )
     if room.player2_id == user_id:
-        return _room_response(room, user_id)          # rejoining from another tab/device
+        return _room_response(room, user_id)          # already in it — just let them back in
     if room.player2_id is not None:
         raise HTTPException(status_code=409, detail="That room already has two players")
 
@@ -191,22 +228,31 @@ def get_room(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    """Used to resume a room from the list."""
     room = _get_room_for_member(room_id, current_user["id"], db)
     return _room_response(room, current_user["id"])
 
 
-@router.post("/rooms/{room_id}/leave")
-def leave_room(
+@router.delete("/rooms/{room_id}")
+def delete_room(
     room_id: int,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Either player leaving ends the session (rooms are cheap — make a new one)."""
-    room = _get_room_for_member(room_id, current_user["id"], db)
-    if room.status != "finished":
+    """
+    Host: deletes the room for both players.
+    Guest: leaves the room (it disappears from their list, and the host's code
+           works again for someone new).
+    """
+    user_id = current_user["id"]
+    room = _get_room_for_member(room_id, user_id, db)
+    if room.player1_id == user_id:
         room.status = "finished"
-        room.updated_at = _now()
-        db.commit()
+    else:
+        room.player2_id = None
+        room.status = "waiting"
+    room.updated_at = _now()
+    db.commit()
     return {"ok": True}
 
 
@@ -274,7 +320,7 @@ async def arcade_websocket(websocket: WebSocket, room_id: int):
         connected            { user_id, role, peer_count }   (to you)
         partner_connected    { user_id, role }               (to the other player)
         partner_disconnected { user_id }                     (to the other player)
-    Close code 4003 = room closed or you're not in it (client stops retrying).
+    Close code 4003 = room deleted or you're not in it (client stops retrying).
     """
     user = await get_ws_user(websocket)
     if not user:
@@ -283,8 +329,11 @@ async def arcade_websocket(websocket: WebSocket, room_id: int):
 
     db = SessionLocal()
     try:
-        room = db.query(ArcadeRoom).filter(ArcadeRoom.id == room_id).first()
-        role = _role_for(room, user_id) if room and room.status != "finished" else None
+        room = _live_rooms(db).filter(ArcadeRoom.id == room_id).first()
+        role = _role_for(room, user_id) if room else None
+        if role:
+            room.updated_at = _now()      # "last played" for the room list
+            db.commit()
     finally:
         db.close()
 
