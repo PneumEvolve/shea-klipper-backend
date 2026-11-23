@@ -1368,3 +1368,46 @@ class DoorHouse(Base):
 
     user = relationship("User")
     neighborhood = relationship("Neighborhood", back_populates="houses")
+
+
+# ─── Arcade (Bash & Dad's Arcade) ─────────────────────────────────────────────
+# Paste at the bottom of models.py. Every import used here is already in your
+# models.py import line (Column, Integer, String, ForeignKey, DateTime, JSON,
+# func, UniqueConstraint, relationship).
+
+
+class ArcadeRoom(Base):
+    """A short-lived play session for one arcade game. Host = player1."""
+    __tablename__ = "arcade_rooms"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    game_id    = Column(String(32), nullable=False, index=True)    # "blob-test", "creature-crashers", ...
+    # Not unique on purpose: codes only need to be unique among OPEN rooms and
+    # get reused once a room is finished. routers/arcade.py enforces that.
+    join_code  = Column(String(8), nullable=False, index=True)
+    player1_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    player2_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status     = Column(String(16), nullable=False, server_default="waiting")  # waiting | active | finished
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    player1 = relationship("User", foreign_keys=[player1_id])
+    player2 = relationship("User", foreign_keys=[player2_id])
+
+
+class ArcadeSave(Base):
+    """One save blob per (user, game). Follows the account to any device."""
+    __tablename__ = "arcade_saves"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    game_id    = Column(String(32), nullable=False)
+    data       = Column(JSON, nullable=False, server_default="{}")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "game_id", name="uq_arcade_save_user_game"),
+    )

@@ -76,6 +76,7 @@ from routers import (
     deadmiles,
     habits,
     doorsales,
+    arcade,
 )
  
 # -------------------- Dream Machine Scheduled Job -------------------- #
@@ -238,3 +239,4 @@ app.include_router(homestead.router, prefix="/homestead", tags=["Homestead"])
 app.include_router(deadmiles.router, prefix="/deadmiles", tags=["deadmiles"])
 app.include_router(habits.router, prefix="/habits", tags=["habits"])
 app.include_router(doorsales.router, prefix="/door-sales", tags=["Door Sales"])
+app.include_router(arcade.router, prefix="/arcade", tags=["Arcade"])
