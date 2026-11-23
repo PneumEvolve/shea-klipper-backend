@@ -1388,6 +1388,10 @@ class ArcadeRoom(Base):
     player1_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     player2_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     status     = Column(String(16), nullable=False, server_default="waiting")  # waiting | active | finished
+        # Shared world for persistent-world games (farm etc). NULL until first save.
+    world          = Column(JSON, nullable=True)
+    world_version  = Column(Integer, nullable=False, server_default="0")
+    world_saved_at = Column(DateTime(timezone=True), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

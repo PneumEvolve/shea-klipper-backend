@@ -6,6 +6,11 @@ Bash & Dad's Arcade — the shared multiplayer + save backbone for every arcade 
             their list to jump back in. Host = p1.
   • Saves   belong to the user's ACCOUNT, per game — not to a room — so progress
             follows you to any device you sign in on.
+  • Worlds  (opt-in, for farm-style games) are stored ON the room, so either
+            player can play solo and the other sees the result later.
+  • Host    is whoever is connected FIRST (not necessarily the creator). If the
+            host leaves, the other player is promoted on the spot. The host runs
+            the game and saves the world.
   • The WebSocket is a dumb relay. It never looks inside game events, so adding
             a new game needs zero backend changes beyond adding its id to
             KNOWN_GAMES.
@@ -16,6 +21,7 @@ Mount in main.py:
 """
 import json
 import random
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -34,10 +40,11 @@ router = APIRouter()
 _manager = RoomManager("arcade")
 
 # Add a game's id here when you add it to the frontend registry.
-KNOWN_GAMES = {"blob-test", "blob-volley", "creature-crashers"}
+KNOWN_GAMES = {"blob-test", "blob-volley", "shared-garden", "creature-crashers"}
 
 MAX_ROOMS_PER_GAME = 3            # rooms a player can HOST per game (like Homestead's 3 saves)
 MAX_SAVE_BYTES     = 256_000      # plenty for unlocks/levels/XP; stops runaway blobs
+MAX_WORLD_BYTES    = 1_500_000    # a whole farm fits comfortably
 CODE_ALPHABET      = "ABCDEFGHJKMNPQRSTUVWXYZ"   # no I / L / O — easy to read off a screen
 CODE_LENGTH        = 4
 
@@ -125,6 +132,10 @@ class JoinRoomRequest(BaseModel):
 
 class SaveRequest(BaseModel):
     data: dict[str, Any]
+
+class WorldSaveRequest(BaseModel):
+    world: dict[str, Any]
+    base_version: int             # the version this world was built from
 
 
 # ─── Rooms ────────────────────────────────────────────────────────────────────
@@ -256,6 +267,63 @@ def delete_room(
     return {"ok": True}
 
 
+# ─── Room worlds (shared, for persistent-world games) ─────────────────────────
+
+@router.get("/rooms/{room_id}/world")
+def get_world(
+    room_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """world is null until the first save — the game creates a fresh one then."""
+    room = _get_room_for_member(room_id, current_user["id"], db)
+    return {
+        "world":    room.world,
+        "version":  room.world_version or 0,
+        "saved_at": room.world_saved_at.isoformat() if room.world_saved_at else None,
+    }
+
+
+@router.put("/rooms/{room_id}/world")
+def put_world(
+    room_id: int,
+    body: WorldSaveRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Save the shared world. Rejected with 409 if someone saved a newer version
+    since `base_version` (e.g. the old host's last save landed after a handover)
+    — the client then reloads instead of overwriting newer progress.
+    """
+    if len(json.dumps(body.world)) > MAX_WORLD_BYTES:
+        raise HTTPException(status_code=413, detail="World is too large")
+
+    user_id = current_user["id"]
+    room = (
+        _live_rooms(db)
+        .filter(ArcadeRoom.id == room_id)
+        .with_for_update()            # two saves at once can't both win
+        .first()
+    )
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if _role_for(room, user_id) is None:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    current = room.world_version or 0
+    if body.base_version != current:
+        raise HTTPException(status_code=409, detail={"message": "World changed since you loaded it", "version": current})
+
+    now = _now()
+    room.world = body.world
+    room.world_version = current + 1
+    room.world_saved_at = now
+    room.updated_at = now
+    db.commit()
+    return {"version": room.world_version, "saved_at": now.isoformat()}
+
+
 # ─── Account saves (per user, per game) ───────────────────────────────────────
 
 def _save_response(save: ArcadeSave | None, game_id: str, user_id: int) -> dict:
@@ -308,7 +376,30 @@ def put_save(
     return _save_response(save, game_id, user_id)
 
 
-# ─── WebSocket relay ──────────────────────────────────────────────────────────
+# ─── WebSocket relay + live host ──────────────────────────────────────────────
+# Who is connected to each room right now, in arrival order. The FIRST entry is
+# the host. Keyed by a per-connection id (not user id) so two tabs on one
+# account can never both think they're host.
+# (In-memory, like RoomManager — fine for a single Render instance.)
+_presence: dict[str, list[tuple[str, int, WebSocket]]] = {}
+
+
+def _host_of(room_key: str):
+    entries = _presence.get(room_key) or []
+    return entries[0] if entries else None
+
+
+async def _announce_host(room_key: str) -> None:
+    host = _host_of(room_key)
+    if not host:
+        return
+    msg = json.dumps({"event": "host", "host_conn": host[0], "host_user": host[1]})
+    for _, _, ws in list(_presence.get(room_key, [])):
+        try:
+            await ws.send_text(msg)
+        except Exception:
+            pass
+
 
 @router.websocket("/ws/{room_id}")
 async def arcade_websocket(websocket: WebSocket, room_id: int):
@@ -317,9 +408,12 @@ async def arcade_websocket(websocket: WebSocket, room_id: int):
 
     Every message is JSON with an "event" field. The server forwards it to the
     other player untouched. Server-sent events:
-        connected            { user_id, role, peer_count }   (to you)
+        connected            { user_id, role, peer_count, conn_id, host_conn, host_user }  (to you)
         partner_connected    { user_id, role }               (to the other player)
         partner_disconnected { user_id }                     (to the other player)
+        host                 { host_conn, host_user }        (to everyone left, when the host changes)
+    role = your seat (p1 = room creator). The live host is whoever connected first:
+    you are host when host_conn == your conn_id.
     Close code 4003 = room deleted or you're not in it (client stops retrying).
     """
     user = await get_ws_user(websocket)
@@ -347,11 +441,18 @@ async def arcade_websocket(websocket: WebSocket, room_id: int):
     room_key = str(room_id)
     peer_count = await _manager.connect(room_key, websocket)
 
+    conn_id = uuid.uuid4().hex[:12]
+    _presence.setdefault(room_key, []).append((conn_id, user_id, websocket))
+    host = _host_of(room_key)
+
     await websocket.send_text(json.dumps({
         "event":      "connected",
         "user_id":    user_id,
         "role":       role,
         "peer_count": peer_count,
+        "conn_id":    conn_id,
+        "host_conn":  host[0],
+        "host_user":  host[1],
     }))
     if peer_count >= 2:
         await _manager.relay(room_key, websocket, json.dumps({
@@ -368,6 +469,13 @@ async def arcade_websocket(websocket: WebSocket, room_id: int):
         pass
     finally:
         _manager.disconnect(room_key, websocket)
+
+        entries = _presence.get(room_key, [])
+        was_host = bool(entries) and entries[0][0] == conn_id
+        entries[:] = [e for e in entries if e[0] != conn_id]
+        if not entries:
+            _presence.pop(room_key, None)
+
         try:
             await _manager.relay(room_key, websocket, json.dumps({
                 "event":   "partner_disconnected",
@@ -375,3 +483,5 @@ async def arcade_websocket(websocket: WebSocket, room_id: int):
             }))
         except Exception:
             pass
+        if was_host:
+            await _announce_host(room_key)      # promote whoever is left
