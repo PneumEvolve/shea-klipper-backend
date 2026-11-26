@@ -40,7 +40,7 @@ router = APIRouter()
 _manager = RoomManager("arcade")
 
 # Add a game's id here when you add it to the frontend registry.
-KNOWN_GAMES = {"blob-test", "blob-volley", "shared-garden", "creature-crashers", "creature-farm", "walk-3d", }
+KNOWN_GAMES = {"blob-test", "blob-volley", "shared-garden", "creature-farm", "walk-3d", "creature-crashers"}
 
 MAX_ROOMS_PER_GAME = 3            # rooms a player can HOST per game (like Homestead's 3 saves)
 MAX_SAVE_BYTES     = 256_000      # plenty for unlocks/levels/XP; stops runaway blobs
@@ -464,6 +464,17 @@ async def arcade_websocket(websocket: WebSocket, room_id: int):
     try:
         while True:
             raw = await websocket.receive_text()
+            if '"host_claim"' in raw:
+                # A client waited and the host never sent the world: that host is
+                # a dead connection (sleeping phone tab, crashed game). Hand
+                # hosting to the client that asked.
+                entries = _presence.get(room_key, [])
+                mine = next((e for e in entries if e[0] == conn_id), None)
+                if mine and entries and entries[0][0] != conn_id:
+                    entries.remove(mine)
+                    entries.insert(0, mine)
+                    await _announce_host(room_key)
+                continue
             await _manager.relay(room_key, websocket, raw)
     except WebSocketDisconnect:
         pass
